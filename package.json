@@ -1,0 +1,33 @@
+{
+  "name": "geugeo",
+  "version": "0.1.0",
+  "description": "그거 — 디스코드 1:1 DM을 제대로 검색하는 유저 설치형 봇",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "register": "tsx src/scripts/registerCommands.ts",
+    "gen-key": "tsx src/scripts/genKey.ts",
+    "demo": "tsx src/scripts/demo.ts",
+    "test": "vitest run"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.0",
+    "better-sqlite3-multiple-ciphers": "^13.0.3",
+    "discord.js": "^14.27.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  }
+}
