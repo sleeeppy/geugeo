@@ -346,7 +346,7 @@ contexts: [InteractionContextType.BotDM, InteractionContextType.PrivateChannel, 
 | `sync`(동기화) | `전체`(boolean) | 수동 동기화 |
 
 - `상대` 자동완성: 요청자 DB의 `channels`에서 `recipient_name LIKE`로 최대 25개를 보여준다. 값은 채널 ID다.
-- 커맨드 등록은 `npm run register`(글로벌)로 한다. 개발 중에는 `DEV_GUILD_ID`가 있으면 길드 커맨드로 즉시 반영한다.
+- 커맨드 등록은 `npm run register`(글로벌)로 한다. 유저 설치형 앱은 길드 커맨드를 쓸 수 없으므로 개발 중에도 글로벌 커맨드로 등록한다(보통 몇 분 안에 반영되고, 디스코드 앱을 `Ctrl/Cmd+R`로 새로고침하면 바로 보인다).
 
 ### 8.2 디스코드 스타일 (`ui/theme.ts`)
 - 강조색: Blurple `#5865F2`. 에러 `#ED4245`, 성공 `#57F287`, 경고 `#FEE75C`.
@@ -443,7 +443,6 @@ ActionRow: StringSelect 종류 (전체 / 링크 / 유튜브 / 이미지 / 파일
 DISCORD_BOT_TOKEN=          # 개발자 포털 > Bot > Reset Token
 DISCORD_APP_ID=             # 개발자 포털 > General Information > Application ID
 ALLOWED_USER_IDS=           # 쉼표 구분 디스코드 사용자 ID (운영자 포함)
-DEV_GUILD_ID=               # 선택: 개발용 길드 (커맨드 즉시 반영)
 MASTER_KEY=                 # 개발용만. npm run gen-key 출력(base64 32바이트). 운영은 systemd credential
 MASTER_KEY_FILE=            # 선택: 키 파일 경로
 DATA_DIR=./data
@@ -499,7 +498,8 @@ LOG_LEVEL=info
    ReadWritePaths=/var/lib/geugeo
    ```
 6. 업데이트: `git pull && npm ci && npm run build && systemctl restart geugeo`. README에 적는다.
-7. **마스터 키를 잃어버리면 모든 데이터를 복구할 수 없다.** 운영자가 안전한 곳(비밀번호 관리자)에 따로 보관하도록 README에 강조한다.
+7. **유휴 회수 주의:** Oracle은 7일 동안 CPU, 네트워크, 메모리 사용률이 모두 낮은 Always Free 인스턴스를 회수할 수 있다. 이 봇은 대부분 유휴 상태라 대상이 될 수 있다. 계정을 Pay As You Go로 업그레이드하면 회수 대상에서 빠지고, 무료 한도 안에서는 과금되지 않는다. 업그레이드할 경우 예산 알림(Budgets, 1달러)을 반드시 설정하도록 README에 안내한다.
+8. **마스터 키를 잃어버리면 모든 데이터를 복구할 수 없다.** 운영자가 안전한 곳(비밀번호 관리자)에 따로 보관하도록 README에 강조한다.
 
 ---
 
@@ -511,7 +511,7 @@ LOG_LEVEL=info
 |---|---|---|
 | **M1 저장소와 검색** | `config`, `crypto`, `registry`, `userStore`, `normalize`, `query`, `snippet`, `demo` | §10의 crypto, userStore, search, normalize, snippet 테스트 통과. `npm run demo`에서 `youtube`, `회의`가 기대대로 나옴 |
 | **M2 수집** | `userApi`, `queue`, `syncer`, `scheduler` | 모의 fetch로 userApi, syncer 테스트 통과. 백필 재개와 401 처리 확인 |
-| **M3 봇과 UI** | `client`, `commands`, `guard`, `sessions`, 모든 handler, `ui/*`, `registerCommands` | ui, guard 테스트 통과. `npm run typecheck` 통과. 실제 봇 토큰으로 개발 길드에서 `/검색`, 페이지 넘김, 필터가 동작 |
+| **M3 봇과 UI** | `client`, `commands`, `guard`, `sessions`, 모든 handler, `ui/*`, `registerCommands` | ui, guard 테스트 통과. `npm run typecheck` 통과. 실제 봇 토큰으로 운영자 DM에서 `/검색`, 페이지 넘김, 필터가 동작 |
 | **M4 보안 점검** | §5 체크리스트 전부, 로거 마스킹 | 체크리스트를 README "보안" 절에 표로 남기고 전부 ✅ |
 | **M5 AI 베타** | `semantic.ts`, `/ai검색`, 백그라운드 임베딩 | 데모 데이터에서 "노래 추천"으로 음악 관련 메시지가 상위에 나옴. 끄면 깔끔하게 비활성 |
 | **M6 배포** | `deploy/*`, README 완성 | 새 Ubuntu 24.04 ARM에서 스크립트 한 번으로 서비스가 뜸 |
@@ -526,7 +526,7 @@ LOG_LEVEL=info
 - 새 의존성은 꼭 필요할 때만 추가한다. 로거는 직접 작성한다(얇게).
 - 동기 SQLite(better-sqlite3)를 쓰되, 큰 쿼리가 이벤트 루프를 오래 막지 않게 페이지 단위로 처리한다.
 - 문서에 없는 판단은 **①보안 ②사용자가 헤매지 않음 ③단순함** 순서로 결정한다.
-- 불확실한 디스코드 API 동작(예: 유저 설치형 앱의 DM interaction 필드)은 추측하지 말고 개발 길드와 실제 DM에서 확인한 뒤 코드와 README에 반영한다.
+- 불확실한 디스코드 API 동작(예: 유저 설치형 앱의 DM interaction 필드)은 추측하지 말고 실제 DM에서 확인한 뒤 코드와 README에 반영한다.
 
 ---
 
@@ -536,5 +536,6 @@ LOG_LEVEL=info
 |---|---|---|
 | 디스코드 앱 (봇 토큰, App ID) | M3 시작 전 | §12.1 |
 | 본인과 친구들의 디스코드 사용자 ID | M3 | 허용 목록 |
-| 개발용 디스코드 서버 1개 | M3 | 커맨드 즉시 반영용, 아무 서버나 새로 만들면 됨 |
 | Oracle Cloud 계정 | M6 시작 전 | §12.2 |
+
+봇 토큰, App ID, 허용 목록은 Cursor 대시보드의 Cloud Agents → Secrets에 `DISCORD_BOT_TOKEN`, `DISCORD_APP_ID`, `ALLOWED_USER_IDS` 이름으로 등록된다. 구현자는 이 값을 환경변수로 읽는다. 채팅에 봇 토큰을 쓰게 하지 않는다.
