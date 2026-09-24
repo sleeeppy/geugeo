@@ -76,6 +76,15 @@ export class UserApi {
     return this.request(token, 'GET', `/channels/${channelId}/messages`, query);
   }
 
+  getGuilds(token: string): Promise<ApiGuild[]> {
+    return this.request(token, 'GET', '/users/@me/guilds');
+  }
+
+  getGuildChannels(token: string, guildId: string): Promise<ApiGuildChannel[]> {
+    assertSnowflake(guildId);
+    return this.request(token, 'GET', `/guilds/${guildId}/channels`);
+  }
+
   private request<T>(token: string, method: string, path: string, query?: Query): Promise<T> {
     assertAllowed(method, path, query);
     const run = requestChain.then(() => this.perform<T>(token, method, path, query));
@@ -146,7 +155,12 @@ export function assertAllowed(method: string, path: string, query?: Query): void
   if (method !== 'GET') {
     throw new ForbiddenRequestError('읽기 외의 요청은 허용되지 않아요.');
   }
-  const allowedPath = path === '/users/@me' || path === '/users/@me/channels' || /^\/channels\/\d{5,22}\/messages$/.test(path);
+  const allowedPath =
+    path === '/users/@me' ||
+    path === '/users/@me/channels' ||
+    path === '/users/@me/guilds' ||
+    /^\/channels\/\d{5,22}\/messages$/.test(path) ||
+    /^\/guilds\/\d{5,22}\/channels$/.test(path);
   if (!allowedPath) throw new ForbiddenRequestError('허용되지 않은 경로예요.');
   if (!query) return;
   const keys = Object.keys(query).filter((key) => query[key as keyof Query] != null);
@@ -166,6 +180,18 @@ export interface ApiChannel {
   type: number;
   last_message_id?: string | null;
   recipients?: Array<{ id: string; username: string; global_name?: string | null }>;
+}
+
+export interface ApiGuild {
+  id: string;
+  name: string;
+}
+
+export interface ApiGuildChannel {
+  id: string;
+  type: number;
+  name?: string;
+  last_message_id?: string | null;
 }
 
 export interface ApiRawMessage {

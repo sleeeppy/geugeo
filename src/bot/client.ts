@@ -1,7 +1,7 @@
 import { Client, Events, type Interaction } from 'discord.js';
 import type { AppContext } from './context.js';
 import { handleAiSearch } from './handlers/aiSearch.js';
-import { handleCollect, handleCollectAll } from './handlers/collect.js';
+import { handleCollect, handleCollectAll, handleCollectAllButton } from './handlers/collect.js';
 import { handleLink, handleLinkButton, handleLinkModal } from './handlers/link.js';
 import { handleRecall, handleSearch, handleSearchComponent } from './handlers/search.js';
 import { handleReset, handleResetConfirm } from './handlers/reset.js';
@@ -46,6 +46,9 @@ async function route(interaction: Interaction, ctx: AppContext): Promise<void> {
       }
       if (interaction.customId === 'gg:unlink:confirm') return void handleUnlinkConfirm(interaction, ctx);
       if (interaction.customId === 'gg:reset:confirm') return void handleResetConfirm(interaction, ctx);
+      if (interaction.customId === 'gg:collect-all:dm' || interaction.customId === 'gg:collect-all:server') {
+        return void handleCollectAllButton(interaction, ctx);
+      }
       if (interaction.customId.startsWith('gg:page:')) return void handleSearchComponent(interaction, ctx);
       return;
     }

@@ -3,7 +3,7 @@ import { isAllowed } from '../guard.js';
 import type { AppContext } from '../context.js';
 import { renderNotice } from '../ui/results.js';
 import { deniedView } from '../ui/states.js';
-import { COLOR, COPY } from '../ui/theme.js';
+import { COLOR, COPY, formatProgress } from '../ui/theme.js';
 
 export async function handleStatus(interaction: ChatInputCommandInteraction, ctx: AppContext): Promise<void> {
   if (!isAllowed(ctx.config, interaction.user.id)) {
@@ -27,7 +27,9 @@ export async function handleStatus(interaction: ChatInputCommandInteraction, ctx
     statusLine(user.status),
     user.lastError ? `-# ${user.lastError}` : '',
     `대화 ${counts.channels.toLocaleString('ko-KR')}개 · 메시지 ${counts.messages.toLocaleString('ko-KR')}개`,
-    user.progress ? `진행 ${user.progress.channelsDone}/${user.progress.channelsTotal} · ${user.progress.messages.toLocaleString('ko-KR')}개` : '',
+    user.progress && (user.status === 'syncing' || user.status === 'paused')
+      ? formatProgress(user.progress.channelsDone, user.progress.channelsTotal, user.progress.messages)
+      : '',
     user.lastSyncAt ? `마지막 동기화 <t:${Math.floor(user.lastSyncAt / 1000)}:R>` : '아직 동기화가 끝난 적이 없어요.',
     ctx.semantic.enabled ? `AI 임베딩 ${progress.embedded.toLocaleString('ko-KR')}/${progress.eligible.toLocaleString('ko-KR')} (베타)` : 'AI 검색은 꺼져 있어요.',
   ].filter(Boolean);

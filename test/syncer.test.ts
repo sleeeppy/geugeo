@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createLogger } from '../src/log.js';
 import { encryptSecret, tokenKey } from '../src/security/crypto.js';
-import { TokenInvalidError, type ApiRawMessage } from '../src/discord/userApi.js';
+import { TokenInvalidError, UserApiError, type ApiRawMessage } from '../src/discord/userApi.js';
 import { Syncer } from '../src/sync/syncer.js';
 import { fixtureStore } from './helpers.js';
 
@@ -248,5 +248,46 @@ describe('syncer', () => {
     expect(calls).toBe(fetched);
     expect(store.countMessages()).toBe(4);
     expect(fx.registry.get(userId)?.status).toBe('ready');
+  });
+
+  it('includes readable server text channels and skips a guild that cannot be listed', async () => {
+    const fx = fixtureStore();
+    opened.push(fx);
+    const userId = '100000000000000027';
+    fx.registry.upsert({
+      userId,
+      username: 'me',
+      tokenEnc: encryptSecret(tokenKey(fx.master), 'tok', userId),
+      status: 'ready',
+    });
+    const api = {
+      async getChannels() {
+        return [{ id: '10', type: 1, last_message_id: '2', recipients: [{ id: '2', username: 'minsu', global_name: '민수' }] }];
+      },
+      async getGuilds() {
+        return [
+          { id: '900', name: '닫힌서버' },
+          { id: '901', name: '우리서버' },
+        ];
+      },
+      async getGuildChannels(_token: string, guildId: string) {
+        if (guildId === '900') throw new UserApiError(403);
+        return [
+          { id: '20', type: 0, name: '일반', last_message_id: '7' },
+          { id: '21', type: 4, name: '카테고리' },
+        ];
+      },
+      async getMessages(_token: string, channelId: string, query: { before?: string }) {
+        if (query.before) return [];
+        return channelId === '20' ? [msg('7')] : [msg('2'), msg('1')];
+      },
+    };
+    const syncer = new Syncer({ registry: fx.registry, users: fx.users, api, masterKey: fx.master, log: createLogger('error') });
+    expect(await syncer.beginCollectAll(userId, 'server')).toBe(2);
+    await syncer.collectAll(userId);
+    const store = fx.users.get(userId);
+    expect(store.listChannels().map((channel) => channel.id).sort()).toEqual(['10', '20']);
+    expect(store.getChannel('20')?.recipientName).toBe('우리서버 · #일반');
+    expect(store.countMessages()).toBe(3);
   });
 });

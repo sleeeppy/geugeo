@@ -1,10 +1,11 @@
-import { ChannelType, type ChatInputCommandInteraction, type DMChannel } from 'discord.js';
+import { ChannelType, type ButtonInteraction, type ChatInputCommandInteraction, type DMChannel } from 'discord.js';
 import { TokenInvalidError } from '../../discord/userApi.js';
 import { isAllowed } from '../guard.js';
 import type { AppContext } from '../context.js';
-import { renderNotice } from '../ui/results.js';
+import { renderCollectAllChoice, renderNotice } from '../ui/results.js';
 import { deniedView, errorView, tokenExpiredView } from '../ui/states.js';
 import { COLOR, COPY } from '../ui/theme.js';
+import { SyncStopped, type CollectScope } from '../../sync/syncer.js';
 
 export async function handleCollect(interaction: ChatInputCommandInteraction, ctx: AppContext): Promise<void> {
   if (!isAllowed(ctx.config, interaction.user.id)) {
@@ -50,7 +51,7 @@ export async function handleCollect(interaction: ChatInputCommandInteraction, ct
       const line = current?.status === 'ready' ? COPY.collected(name, count) : `${COPY.collecting(name)}\n-# 메시지 ${count.toLocaleString('ko-KR')}개`;
       const accent = current?.status === 'error' || current?.status === 'token_invalid' ? COLOR.red : COLOR.green;
       void interaction.editReply(renderNotice(`### 수집\n${line}`, accent)).catch(() => clearInterval(timer));
-    }, 10_000);
+    }, 3_000);
     timer.unref?.();
   } catch (error) {
     if (error instanceof TokenInvalidError) {
@@ -72,16 +73,36 @@ export async function handleCollectAll(interaction: ChatInputCommandInteraction,
     await interaction.reply(user ? tokenExpiredView() : renderNotice(COPY.notLinkedYet));
     return;
   }
-  await interaction.deferReply({ flags: 64 });
+  await interaction.reply(renderCollectAllChoice());
+}
+
+export async function handleCollectAllButton(interaction: ButtonInteraction, ctx: AppContext): Promise<void> {
+  if (!isAllowed(ctx.config, interaction.user.id)) {
+    await interaction.reply(deniedView());
+    return;
+  }
+  const user = ctx.registry.get(interaction.user.id);
+  if (!user?.tokenEnc) {
+    await interaction.reply(user ? tokenExpiredView() : renderNotice(COPY.notLinkedYet));
+    return;
+  }
+  if (user.status === 'syncing') {
+    await interaction.reply(renderNotice(COPY.alreadySyncing, COLOR.yellow));
+    return;
+  }
+  const scope: CollectScope = interaction.customId.endsWith(':server') ? 'server' : 'dm';
+  const scopeLabel = scope === 'server' ? 'DM과 서버' : 'DM';
+  await interaction.deferUpdate();
+  await interaction.editReply(renderNotice(`### 전체수집\n${scopeLabel} 목록을 확인하는 중이에요.`, COLOR.blurple));
   try {
-    const total = await ctx.syncer.beginCollectAll(interaction.user.id);
+    const total = await ctx.syncer.beginCollectAll(interaction.user.id, scope);
     if (total === 0) {
       ctx.registry.setStatus(interaction.user.id, 'ready');
-      await interaction.editReply(renderNotice(COPY.noDms, COLOR.yellow));
+      await interaction.editReply(renderNotice(`### 전체수집\n${COPY.noDms}`, COLOR.yellow));
       return;
     }
     ctx.queue.enqueue(`collect-all:${interaction.user.id}`, () => ctx.syncer.collectAll(interaction.user.id));
-    await interaction.editReply(renderNotice(`### 전체수집\n${COPY.collectingAll(0, total, 0)}`, COLOR.green));
+    await interaction.editReply(renderNotice(`### 전체수집\n${COPY.collectingAll(scopeLabel, 0, total, 0)}`, COLOR.green));
     const started = Date.now();
     const timer = setInterval(() => {
       if (Date.now() - started > 14 * 60 * 1000) {
@@ -99,13 +120,17 @@ export async function handleCollectAll(interaction: ChatInputCommandInteraction,
         current?.status === 'paused'
           ? COPY.stopped
           : current?.status === 'ready'
-            ? COPY.collectedAll(channels, messages)
-            : COPY.collectingAll(done, channels, messages);
+            ? COPY.collectedAll(scopeLabel, channels, messages)
+            : COPY.collectingAll(scopeLabel, done, channels, messages);
       const accent = current?.status === 'error' || current?.status === 'token_invalid' ? COLOR.red : COLOR.green;
       void interaction.editReply(renderNotice(`### 전체수집\n${line}`, accent)).catch(() => clearInterval(timer));
-    }, 10_000);
+    }, 3_000);
     timer.unref?.();
   } catch (error) {
+    if (error instanceof SyncStopped) {
+      await interaction.editReply(renderNotice(`### 전체수집\n${COPY.stopped}`, COLOR.green));
+      return;
+    }
     if (error instanceof TokenInvalidError) {
       await interaction.editReply(renderNotice('토큰이 거부됐어요. `/연동`으로 다시 넣어 주세요.', COLOR.red));
       return;

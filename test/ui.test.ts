@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { componentStats, renderSearch } from '../src/bot/ui/results.js';
+import { formatProgress } from '../src/bot/ui/theme.js';
 import type { SearchHit } from '../src/search/query.js';
 
 function hit(id: string, content: string): SearchHit {
@@ -24,6 +25,11 @@ function hit(id: string, content: string): SearchHit {
 const filters = { author: 'all' as const, kind: 'all' as const, period: 'all' as const };
 
 describe('search results UI', () => {
+  it('shows collection progress as a percentage', () => {
+    expect(formatProgress(13, 100, 71062)).toBe('13% · 14/100번째 대화 · 메시지 71,062개');
+    expect(formatProgress(0, 100, 1200)).toBe('0% · 1/100번째 대화 · 메시지 1,200개');
+  });
+
   it('stays within Discord component and text limits for five results', () => {
     const hits = [1, 2, 3, 4, 5].map((id) => hit(String(id), `youtube 결과 ${id} https://www.youtube.com/watch?v=abc`));
     const view = renderSearch({
