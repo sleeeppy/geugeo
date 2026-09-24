@@ -6,7 +6,7 @@ import { deniedView } from '../ui/states.js';
 import { COLOR, COPY } from '../ui/theme.js';
 
 export function isSyncJob(name: string, userId: string): boolean {
-  return name === `backfill:${userId}` || name === `incremental:${userId}` || name.startsWith(`collect:${userId}:`);
+  return name === `backfill:${userId}` || name === `incremental:${userId}` || name === `collect-all:${userId}` || name.startsWith(`collect:${userId}:`);
 }
 
 export async function handleStop(interaction: ChatInputCommandInteraction, ctx: AppContext): Promise<void> {

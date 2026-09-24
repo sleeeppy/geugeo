@@ -20,10 +20,15 @@ export const COPY = {
   aiOff: 'AI 검색은 지금은 꺼져 있어요.',
   aiFoot: '정확하지 않을 수 있어요. 정확한 단어를 알면 /그거가 더 확실해요.',
   linked: '연결됐어요. 메시지를 모으려면 그 사람과의 DM을 열고 `/수집`을 입력하세요.',
-  notDm: '1:1 DM에서만 수집할 수 있어요. 그 사람과의 대화창에서 `/수집`을 입력하세요.',
+  notDm: '지금 열린 창이 1:1 DM이 아니에요. 그 사람과의 대화창에서 `/수집`을 입력하세요.',
   notBotDm: '봇과의 대화는 수집하지 않아요. 그 사람과의 DM에서 `/수집`을 입력하세요.',
   collecting: (name: string) => `${name}와의 DM을 모으는 중이에요.`,
   collected: (name: string, count: number) => `${name}와의 DM을 모았어요. 메시지 ${count.toLocaleString('ko-KR')}개.`,
+  collectingAll: (done: number, total: number, messages: number) =>
+    `1:1 DM 전체를 모으는 중이에요.\n-# 대화 ${done.toLocaleString('ko-KR')}/${total.toLocaleString('ko-KR')} · 메시지 ${messages.toLocaleString('ko-KR')}개`,
+  collectedAll: (total: number, messages: number) =>
+    `1:1 DM ${total.toLocaleString('ko-KR')}개를 모았어요. 메시지 ${messages.toLocaleString('ko-KR')}개.`,
+  noDms: '모을 1:1 DM이 없어요.',
   stopped: '수집을 멈췄어요. 지금까지 받은 메시지는 그대로 검색돼요.',
   stopIdle: '지금 모으는 대화가 없어요.',
   resetAsk: '모아 둔 DM 메시지를 전부 삭제할까요? 계정 연동은 유지돼요.',

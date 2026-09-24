@@ -210,4 +210,43 @@ describe('syncer', () => {
     expect(fx.users.get(userId).countMessages()).toBe(0);
     expect(fx.registry.get(userId)?.status).toBe('paused');
   });
+
+  it('collects every 1:1 DM once and leaves group chats alone', async () => {
+    const fx = fixtureStore();
+    opened.push(fx);
+    const userId = '100000000000000026';
+    fx.registry.upsert({
+      userId,
+      username: 'me',
+      tokenEnc: encryptSecret(tokenKey(fx.master), 'tok', userId),
+      status: 'ready',
+    });
+    let calls = 0;
+    const api = {
+      async getChannels() {
+        return [
+          { id: '10', type: 1, last_message_id: '2', recipients: [{ id: '2', username: 'minsu', global_name: '민수' }] },
+          { id: '11', type: 1, last_message_id: '4', recipients: [{ id: '3', username: 'jieun', global_name: '지은' }] },
+          { id: '12', type: 3, last_message_id: '8', recipients: [{ id: '4', username: 'group', global_name: '모임' }] },
+        ];
+      },
+      async getMessages(_token: string, channelId: string, query: { before?: string }) {
+        calls += 1;
+        if (query.before) return [];
+        return channelId === '10' ? [msg('2'), msg('1')] : [msg('4'), msg('3')];
+      },
+    };
+    const syncer = new Syncer({ registry: fx.registry, users: fx.users, api, masterKey: fx.master, log: createLogger('error') });
+    expect(await syncer.beginCollectAll(userId)).toBe(2);
+    await syncer.collectAll(userId);
+    const store = fx.users.get(userId);
+    expect(store.listChannels().map((channel) => channel.id).sort()).toEqual(['10', '11']);
+    expect(store.countMessages()).toBe(4);
+    const fetched = calls;
+    expect(await syncer.beginCollectAll(userId)).toBe(2);
+    await syncer.collectAll(userId);
+    expect(calls).toBe(fetched);
+    expect(store.countMessages()).toBe(4);
+    expect(fx.registry.get(userId)?.status).toBe('ready');
+  });
 });

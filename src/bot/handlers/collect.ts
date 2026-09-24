@@ -17,12 +17,12 @@ export async function handleCollect(interaction: ChatInputCommandInteraction, ct
     return;
   }
   const channel = interaction.channel;
-  if (channel?.type === ChannelType.DM && (channel as DMChannel).recipientId === interaction.client.user?.id) {
-    await interaction.reply(renderNotice(COPY.notBotDm, COLOR.yellow));
+  if (!channel || channel.type !== ChannelType.DM) {
+    await interaction.reply(renderNotice(COPY.notDm, COLOR.yellow));
     return;
   }
-  if (channel && channel.type !== ChannelType.DM) {
-    await interaction.reply(renderNotice(COPY.notDm, COLOR.yellow));
+  if ((channel as DMChannel).recipientId === interaction.client.user?.id) {
+    await interaction.reply(renderNotice(COPY.notBotDm, COLOR.yellow));
     return;
   }
   await interaction.deferReply({ flags: 64 });
@@ -58,6 +58,59 @@ export async function handleCollect(interaction: ChatInputCommandInteraction, ct
       return;
     }
     ctx.log.error('수집을 시작하지 못했어요.', { error });
+    await interaction.editReply(errorView());
+  }
+}
+
+export async function handleCollectAll(interaction: ChatInputCommandInteraction, ctx: AppContext): Promise<void> {
+  if (!isAllowed(ctx.config, interaction.user.id)) {
+    await interaction.reply(deniedView());
+    return;
+  }
+  const user = ctx.registry.get(interaction.user.id);
+  if (!user?.tokenEnc) {
+    await interaction.reply(user ? tokenExpiredView() : renderNotice(COPY.notLinkedYet));
+    return;
+  }
+  await interaction.deferReply({ flags: 64 });
+  try {
+    const total = await ctx.syncer.beginCollectAll(interaction.user.id);
+    if (total === 0) {
+      ctx.registry.setStatus(interaction.user.id, 'ready');
+      await interaction.editReply(renderNotice(COPY.noDms, COLOR.yellow));
+      return;
+    }
+    ctx.queue.enqueue(`collect-all:${interaction.user.id}`, () => ctx.syncer.collectAll(interaction.user.id));
+    await interaction.editReply(renderNotice(`### 전체수집\n${COPY.collectingAll(0, total, 0)}`, COLOR.green));
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (Date.now() - started > 14 * 60 * 1000) {
+        clearInterval(timer);
+        return;
+      }
+      const current = ctx.registry.get(interaction.user.id);
+      if (!current || current.status === 'ready' || current.status === 'paused' || current.status === 'error' || current.status === 'token_invalid') {
+        clearInterval(timer);
+      }
+      const done = current?.progress?.channelsDone ?? 0;
+      const channels = current?.progress?.channelsTotal ?? total;
+      const messages = current?.progress?.messages ?? 0;
+      const line =
+        current?.status === 'paused'
+          ? COPY.stopped
+          : current?.status === 'ready'
+            ? COPY.collectedAll(channels, messages)
+            : COPY.collectingAll(done, channels, messages);
+      const accent = current?.status === 'error' || current?.status === 'token_invalid' ? COLOR.red : COLOR.green;
+      void interaction.editReply(renderNotice(`### 전체수집\n${line}`, accent)).catch(() => clearInterval(timer));
+    }, 10_000);
+    timer.unref?.();
+  } catch (error) {
+    if (error instanceof TokenInvalidError) {
+      await interaction.editReply(renderNotice('토큰이 거부됐어요. `/연동`으로 다시 넣어 주세요.', COLOR.red));
+      return;
+    }
+    ctx.log.error('전체 수집을 시작하지 못했어요.', { error });
     await interaction.editReply(errorView());
   }
 }

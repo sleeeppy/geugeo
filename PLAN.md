@@ -344,7 +344,8 @@ contexts: [InteractionContextType.BotDM, InteractionContextType.PrivateChannel, 
 | `recall`(그거뭐지) | `search`와 같음 | 수집해 둔 DM 전체 검색 |
 | `ai-search`(ai검색) | `질문`(필수), `상대`(자동완성) | AI 의미 검색 (베타) |
 | `link`(연동) | 없음 | 토큰만 저장. 메시지는 가져오지 않음 |
-| `collect`(수집) | 없음 | 이 명령어를 입력한 1:1 DM만 모음 |
+| `collect`(수집) | 없음 | 지금 열린 1:1 DM만 모음 |
+| `collect-all`(전체수집) | 없음 | 1:1 DM 전체를 모음. 그룹 대화와 서버 채널은 제외 |
 | `stop`(중지) | 없음 | 진행 중인 수집을 멈춤. 받은 메시지는 유지 |
 | `reset`(초기화) | 없음 | 확인 후 모아 둔 메시지 전부 삭제. 연동은 유지 |
 | `unlink`(연동해제) | 없음 | 확인 버튼 → 토큰과 데이터 완전 삭제 |

@@ -68,6 +68,76 @@ export class Syncer {
     return name;
   }
 
+  async beginCollectAll(userId: string): Promise<number> {
+    const token = this.readToken(userId);
+    if (!token) return 0;
+    let channels;
+    try {
+      channels = await this.options.api.getChannels(token);
+    } catch (error) {
+      this.handleFailure(userId, error);
+      throw error;
+    }
+    const dms = channels.filter(isDirectMessage);
+    const store = this.options.users.get(userId);
+    for (const remote of dms) {
+      const current = store.getChannel(remote.id);
+      const recipient = remote.recipients?.[0];
+      store.upsertChannel({
+        id: remote.id,
+        type: 1,
+        recipientId: recipient?.id ?? '',
+        recipientName: recipient?.global_name || recipient?.username || '알 수 없음',
+        lastMessageId: remote.last_message_id ?? null,
+        newestSyncedId: current?.newestSyncedId ?? null,
+        oldestSyncedId: current?.oldestSyncedId ?? null,
+        backfillDone: current?.backfillDone ?? false,
+        messageCount: current?.messageCount ?? 0,
+        tracked: true,
+      });
+    }
+    this.options.registry.setStatus(userId, 'syncing');
+    this.options.registry.setProgress(userId, { channelsDone: 0, channelsTotal: dms.length, messages: store.countMessages() });
+    return dms.length;
+  }
+
+  async collectAll(userId: string): Promise<void> {
+    const token = this.readToken(userId);
+    if (!token) return;
+    const store = this.options.users.get(userId);
+    try {
+      this.haltIfStopped(userId);
+      this.options.registry.setStatus(userId, 'syncing');
+      const ordered = store.listTracked().sort((a, b) => compareId(b.lastMessageId, a.lastMessageId));
+      let done = 0;
+      for (const channel of ordered) {
+        this.haltIfStopped(userId);
+        const fresh = store.getChannel(channel.id) ?? channel;
+        if (!fresh.backfillDone) {
+          await this.backfillChannel(userId, token, fresh.id, () => {
+            this.options.registry.setProgress(userId, {
+              channelsDone: done,
+              channelsTotal: ordered.length,
+              messages: store.countMessages(),
+            });
+          });
+        } else if (fresh.lastMessageId && fresh.lastMessageId !== fresh.newestSyncedId) {
+          await this.incrementalChannel(userId, fresh.id);
+        }
+        done += 1;
+        this.options.registry.setProgress(userId, {
+          channelsDone: done,
+          channelsTotal: ordered.length,
+          messages: store.countMessages(),
+        });
+      }
+      this.haltIfStopped(userId);
+      this.finish(userId);
+    } catch (error) {
+      this.handleFailure(userId, error);
+    }
+  }
+
   async collectChannel(userId: string, channelId: string): Promise<void> {
     const token = this.readToken(userId);
     if (!token) return;
