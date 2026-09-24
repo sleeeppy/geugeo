@@ -1,4 +1,4 @@
-import { ChannelType, type ButtonInteraction, type ChatInputCommandInteraction, type DMChannel } from 'discord.js';
+import { InteractionContextType, type ButtonInteraction, type ChatInputCommandInteraction } from 'discord.js';
 import { TokenInvalidError } from '../../discord/userApi.js';
 import { isAllowed } from '../guard.js';
 import type { AppContext } from '../context.js';
@@ -6,6 +6,7 @@ import { renderCollectAllChoice, renderNotice } from '../ui/results.js';
 import { deniedView, errorView, tokenExpiredView } from '../ui/states.js';
 import { COLOR, COPY } from '../ui/theme.js';
 import { SyncStopped, type CollectScope } from '../../sync/syncer.js';
+import { openDirectChannelId } from '../dmChannel.js';
 
 export async function handleCollect(interaction: ChatInputCommandInteraction, ctx: AppContext): Promise<void> {
   if (!isAllowed(ctx.config, interaction.user.id)) {
@@ -17,25 +18,20 @@ export async function handleCollect(interaction: ChatInputCommandInteraction, ct
     await interaction.reply(user ? tokenExpiredView() : renderNotice(COPY.notLinkedYet));
     return;
   }
-  const channel = interaction.channel;
-  if (!channel || channel.type !== ChannelType.DM) {
-    await interaction.reply(renderNotice(COPY.notDm, COLOR.yellow));
-    return;
-  }
-  if ((channel as DMChannel).recipientId === interaction.client.user?.id) {
-    await interaction.reply(renderNotice(COPY.notBotDm, COLOR.yellow));
+  const channelId = openDirectChannelId(interaction);
+  if (!channelId) {
+    const botDm = interaction.context === InteractionContextType.BotDM;
+    await interaction.reply(renderNotice(botDm ? COPY.notBotDm : COPY.notDm, COLOR.yellow));
     return;
   }
   await interaction.deferReply({ flags: 64 });
   try {
-    const name = await ctx.syncer.beginCollect(interaction.user.id, interaction.channelId);
+    const name = await ctx.syncer.beginCollect(interaction.user.id, channelId);
     if (!name) {
       await interaction.editReply(renderNotice(COPY.notDm, COLOR.yellow));
       return;
     }
-    ctx.queue.enqueue(`collect:${interaction.user.id}:${interaction.channelId}`, () =>
-      ctx.syncer.collectChannel(interaction.user.id, interaction.channelId),
-    );
+    ctx.queue.enqueue(`collect:${interaction.user.id}:${channelId}`, () => ctx.syncer.collectChannel(interaction.user.id, channelId));
     await interaction.editReply(renderNotice(`### 수집\n${COPY.collecting(name)}`, COLOR.green));
     const started = Date.now();
     const timer = setInterval(() => {
