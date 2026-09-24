@@ -25,8 +25,15 @@ function main(): void {
   const users = new UserDirectory(config.dataDir, config.masterKey);
   const api = new UserApi({ delayMs: config.userApiDelayMs });
   const queue = new JobQueue(log);
-  const syncer = new Syncer({ registry, users, api, masterKey: config.masterKey, log });
   const semantic = new SemanticIndex({ enabled: config.aiEnabled, users, queue, log, dataDir: config.dataDir });
+  const syncer = new Syncer({
+    registry,
+    users,
+    api,
+    masterKey: config.masterKey,
+    log,
+    onSynced: (userId) => semantic.kick(userId),
+  });
   const ctx: AppContext = {
     config,
     registry,

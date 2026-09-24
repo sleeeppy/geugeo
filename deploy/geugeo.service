@@ -1,0 +1,23 @@
+[Unit]
+Description=그거 Discord DM search bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=geugeo
+WorkingDirectory=/opt/geugeo
+EnvironmentFile=/etc/geugeo/geugeo.env
+Environment=DATA_DIR=/var/lib/geugeo
+Environment=NODE_ENV=production
+LoadCredential=master-key:/etc/geugeo/master-key
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/geugeo
+
+[Install]
+WantedBy=multi-user.target

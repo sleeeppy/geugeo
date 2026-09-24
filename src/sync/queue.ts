@@ -19,6 +19,10 @@ export class JobQueue {
     return !this.running && this.jobs.length === 0;
   }
 
+  get waiting(): number {
+    return this.jobs.length;
+  }
+
   enqueue(name: string, run: () => Promise<void>): void {
     if (this.jobs.some((job) => job.name === name) || (this.running && this.current === name)) return;
     this.jobs.push({ name, run });
