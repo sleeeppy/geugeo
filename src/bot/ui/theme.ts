@@ -24,11 +24,14 @@ export const COPY = {
   notBotDm: '봇과의 대화는 수집하지 않아요. 그 사람과의 DM에서 `/수집`을 입력하세요.',
   collecting: (name: string) => `${name}와의 DM을 모으는 중이에요.`,
   collected: (name: string, count: number) => `${name}와의 DM을 모았어요. 메시지 ${count.toLocaleString('ko-KR')}개.`,
-  collectingAll: (done: number, total: number, messages: number) =>
-    `1:1 DM 전체를 모으는 중이에요.\n-# 대화 ${done.toLocaleString('ko-KR')}/${total.toLocaleString('ko-KR')} · 메시지 ${messages.toLocaleString('ko-KR')}개`,
-  collectedAll: (total: number, messages: number) =>
-    `1:1 DM ${total.toLocaleString('ko-KR')}개를 모았어요. 메시지 ${messages.toLocaleString('ko-KR')}개.`,
-  noDms: '모을 1:1 DM이 없어요.',
+  collectAllAsk:
+    '범위를 고르면 그때 모으기 시작해요.\n-# **DM만**은 1:1 대화만, **서버까지**는 그 DM과 읽을 수 있는 서버 글 채널을 같이 모아요.',
+  collectingAll: (scope: string, done: number, total: number, messages: number) =>
+    `${scope} 범위를 모으는 중이에요.\n-# ${formatProgress(done, total, messages)}`,
+  collectedAll: (scope: string, total: number, messages: number) =>
+    `${scope} 범위 ${total.toLocaleString('ko-KR')}개를 모았어요. 메시지 ${messages.toLocaleString('ko-KR')}개.`,
+  noDms: '모을 대화가 없어요.',
+  alreadySyncing: '이미 모으는 중이에요. `/상태`에 퍼센트가 바로 나와요.',
   stopped: '수집을 멈췄어요. 지금까지 받은 메시지는 그대로 검색돼요.',
   stopIdle: '지금 모으는 대화가 없어요.',
   resetAsk: '모아 둔 DM 메시지를 전부 삭제할까요? 계정 연동은 유지돼요.',
@@ -43,3 +46,9 @@ export const COPY = {
   tokenHelp:
     '브라우저에서 discord.com/app 에 로그인한 뒤 F12 → Network → 필터에 api 입력 → 아무 요청 → Request Headers의 authorization 값을 복사하세요. 이 값은 비밀번호와 같아요. 그거 말고는 아무 데도 붙여넣지 마세요.',
 } as const;
+
+export function formatProgress(done: number, total: number, messages: number): string {
+  const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  const place = total === 0 ? 0 : Math.min(total, done < total ? done + 1 : done);
+  return `${percent}% · ${place.toLocaleString('ko-KR')}/${total.toLocaleString('ko-KR')}번째 대화 · 메시지 ${messages.toLocaleString('ko-KR')}개`;
+}

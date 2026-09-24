@@ -21,6 +21,8 @@ describe('userApi allow list', () => {
     const api = new UserApi({ delayMs: 0, jitterMs: 0, fetchImpl });
     expect(() => assertAllowed('POST', '/users/@me')).toThrow(ForbiddenRequestError);
     expect(() => assertAllowed('GET', '/users/@me/settings')).toThrow(ForbiddenRequestError);
+    expect(() => assertAllowed('GET', '/users/@me/guilds')).not.toThrow();
+    expect(() => assertAllowed('GET', '/guilds/123456/channels')).not.toThrow();
     expect(() => assertAllowed('GET', '/channels/123456/messages', { limit: 10, before: '1', content: 'x' } as never)).toThrow(
       ForbiddenRequestError,
     );

@@ -1,4 +1,4 @@
-import { COLOR, COPY } from './theme.js';
+import { COLOR, COPY, formatProgress } from './theme.js';
 import { renderNotice, type Rendered } from './results.js';
 
 export function deniedView(): Rendered {
@@ -30,5 +30,5 @@ export function aiOffView(): Rendered {
 }
 
 export function syncingLine(done: number, total: number, messages: number): string {
-  return `-# ⏳ 아직 모으는 중이에요 (${total.toLocaleString('ko-KR')}개 중 ${done.toLocaleString('ko-KR')}번째 대화, ${messages.toLocaleString('ko-KR')}개). 지금까지 모은 메시지에서 찾았어요.`;
+  return `-# ⏳ 아직 모으는 중이에요. ${formatProgress(done, total, messages)}. 지금까지 모은 메시지에서 찾았어요.`;
 }

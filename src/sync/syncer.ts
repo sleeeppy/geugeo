@@ -8,18 +8,20 @@ import type { StoredMessage, UserDirectory } from '../store/userStore.js';
 export interface SyncerOptions {
   registry: Registry;
   users: UserDirectory;
-  api: Pick<UserApi, 'getChannels' | 'getMessages'>;
+  api: Pick<UserApi, 'getChannels' | 'getMessages'> & Partial<Pick<UserApi, 'getGuilds' | 'getGuildChannels'>>;
   masterKey: Buffer;
   log: Logger;
   onSynced?: (userId: string) => void;
 }
 
-class SyncStopped extends Error {
+export class SyncStopped extends Error {
   constructor() {
     super('수집을 멈췄어요.');
     this.name = 'SyncStopped';
   }
 }
+
+export type CollectScope = 'dm' | 'server';
 
 export class Syncer {
   private readonly inflight = new Set<string>();
@@ -68,7 +70,7 @@ export class Syncer {
     return name;
   }
 
-  async beginCollectAll(userId: string): Promise<number> {
+  async beginCollectAll(userId: string, scope: CollectScope = 'dm'): Promise<number> {
     const token = this.readToken(userId);
     if (!token) return 0;
     let channels;
@@ -78,17 +80,26 @@ export class Syncer {
       this.handleFailure(userId, error);
       throw error;
     }
-    const dms = channels.filter(isDirectMessage);
     const store = this.options.users.get(userId);
-    for (const remote of dms) {
-      const current = store.getChannel(remote.id);
+    const targets = channels.filter(isDirectMessage).map((remote) => {
       const recipient = remote.recipients?.[0];
-      store.upsertChannel({
+      return {
         id: remote.id,
         type: 1,
         recipientId: recipient?.id ?? '',
         recipientName: recipient?.global_name || recipient?.username || '알 수 없음',
         lastMessageId: remote.last_message_id ?? null,
+      };
+    });
+    if (scope === 'server') targets.push(...(await this.listGuildTargets(userId, token)));
+    for (const target of targets) {
+      const current = store.getChannel(target.id);
+      store.upsertChannel({
+        id: target.id,
+        type: target.type,
+        recipientId: target.recipientId,
+        recipientName: target.recipientName,
+        lastMessageId: target.lastMessageId,
         newestSyncedId: current?.newestSyncedId ?? null,
         oldestSyncedId: current?.oldestSyncedId ?? null,
         backfillDone: current?.backfillDone ?? false,
@@ -97,8 +108,8 @@ export class Syncer {
       });
     }
     this.options.registry.setStatus(userId, 'syncing');
-    this.options.registry.setProgress(userId, { channelsDone: 0, channelsTotal: dms.length, messages: store.countMessages() });
-    return dms.length;
+    this.options.registry.setProgress(userId, { channelsDone: 0, channelsTotal: targets.length, messages: store.countMessages() });
+    return targets.length;
   }
 
   async collectAll(userId: string): Promise<void> {
@@ -309,6 +320,44 @@ export class Syncer {
       this.options.registry.setStatus(user.userId, 'ready');
       this.options.registry.clearProgress(user.userId);
     }
+  }
+
+  private async listGuildTargets(
+    userId: string,
+    token: string,
+  ): Promise<Array<{ id: string; type: number; recipientId: string; recipientName: string; lastMessageId: string | null }>> {
+    const api = this.options.api;
+    if (!api.getGuilds || !api.getGuildChannels) return [];
+    let guilds;
+    try {
+      guilds = await api.getGuilds(token);
+    } catch (error) {
+      if (error instanceof UserApiError && (error.status === 403 || error.status === 404)) return [];
+      throw error;
+    }
+    const targets = [];
+    for (const guild of guilds) {
+      this.haltIfStopped(userId);
+      let channels;
+      try {
+        channels = await api.getGuildChannels(token, guild.id);
+      } catch (error) {
+        if (error instanceof UserApiError && (error.status === 403 || error.status === 404)) continue;
+        throw error;
+      }
+      for (const channel of channels) {
+        if (channel.type !== 0 && channel.type !== 5) continue;
+        const channelName = channel.name?.trim() || '채널';
+        targets.push({
+          id: channel.id,
+          type: channel.type,
+          recipientId: guild.id,
+          recipientName: `${guild.name} · #${channelName}`,
+          lastMessageId: channel.last_message_id ?? null,
+        });
+      }
+    }
+    return targets;
   }
 
   private finish(userId: string): void {

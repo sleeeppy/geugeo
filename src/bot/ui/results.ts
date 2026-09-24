@@ -196,6 +196,19 @@ function buttonRow(customId: string, label: string, style = ButtonStyle.Primary)
   return new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(customId).setLabel(label).setStyle(style));
 }
 
+export function renderCollectAllChoice(): Rendered {
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR.blurple)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### 전체수집\n${COPY.collectAllAsk}`))
+    .addActionRowComponents(
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId('gg:collect-all:dm').setLabel('DM만').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('gg:collect-all:server').setLabel('서버까지').setStyle(ButtonStyle.Secondary),
+      ),
+    );
+  return payload([container.toJSON()]);
+}
+
 function metaLine(hit: SearchHit): string {
   const tags: string[] = [];
   if (hit.hasYoutube) tags.push('유튜브');
