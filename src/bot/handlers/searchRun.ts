@@ -41,7 +41,7 @@ export async function runAiSearch(ctx: AppContext, ownerId: string, query: strin
       scoped: Boolean(channelId),
       recipientName: channelId ? store.getChannel(channelId)?.recipientName : undefined,
       mode: 'ai',
-      syncingNote: user?.status === 'syncing' && user.progress ? syncingLine(user.progress.channelsDone, user.progress.channelsTotal, user.progress.messages) : undefined,
+      syncingNote: user?.status === 'syncing' ? syncingLine() : undefined,
     });
   } catch (error) {
     ctx.log.error('AI 검색에 실패했어요.', { error });

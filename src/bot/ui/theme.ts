@@ -31,7 +31,7 @@ export const COPY = {
   collectedAll: (scope: string, total: number, messages: number) =>
     `${scope} 범위 ${total.toLocaleString('ko-KR')}개를 모았어요. 메시지 ${messages.toLocaleString('ko-KR')}개.`,
   noDms: '모을 대화가 없어요.',
-  alreadySyncing: '이미 모으는 중이에요. `/상태`에 퍼센트가 바로 나와요.',
+  alreadySyncing: '이미 모으는 중이에요. `/상태`에 사람별 개수가 나와요.',
   stopped: '수집을 멈췄어요. 지금까지 받은 메시지는 그대로 검색돼요.',
   stopIdle: '지금 모으는 대화가 없어요.',
   resetAsk: '모아 둔 DM 메시지를 전부 삭제할까요? 계정 연동은 유지돼요.',
@@ -51,4 +51,34 @@ export function formatProgress(done: number, total: number, messages: number): s
   const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
   const place = total === 0 ? 0 : Math.min(total, done < total ? done + 1 : done);
   return `${percent}% · ${place.toLocaleString('ko-KR')}/${total.toLocaleString('ko-KR')}번째 대화 · 메시지 ${messages.toLocaleString('ko-KR')}개`;
+}
+
+export type PersonState = 'active' | 'waiting' | 'done';
+
+export interface PersonProgress {
+  name: string;
+  count: number;
+  state: PersonState;
+}
+
+export function formatPersonProgress(name: string, count: number, state: PersonState): string {
+  const amount = `${count.toLocaleString('ko-KR')}개`;
+  if (state === 'done') return `${name} · 100% · ${amount}`;
+  if (state === 'active') return `${name} · 수집 중 · ${amount}`;
+  return `${name} · 대기 중 · ${amount}`;
+}
+
+export function renderPersonList(rows: PersonProgress[], limit = 20): string {
+  const ordered = [...rows].sort((left, right) => personRank(left.state) - personRank(right.state) || left.name.localeCompare(right.name, 'ko'));
+  const shown = ordered.slice(0, limit);
+  const lines = shown.map((row, index) => `${index + 1}. ${formatPersonProgress(row.name, row.count, row.state)}`);
+  const hidden = ordered.length - shown.length;
+  if (hidden > 0) lines.push(`-# 외 ${hidden.toLocaleString('ko-KR')}개 대화`);
+  return lines.join('\n');
+}
+
+function personRank(state: PersonState): number {
+  if (state === 'active') return 0;
+  if (state === 'waiting') return 1;
+  return 2;
 }

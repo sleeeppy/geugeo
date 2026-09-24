@@ -26,6 +26,11 @@ export type CollectScope = 'dm' | 'server';
 export class Syncer {
   private readonly inflight = new Set<string>();
   private readonly cancel = new Set<string>();
+  private readonly open = new Set<string>();
+
+  isCollecting(userId: string, channelId: string): boolean {
+    return this.open.has(`${userId}:${channelId}`);
+  }
 
   requestStop(userId: string): void {
     this.cancel.add(userId);
@@ -260,6 +265,16 @@ export class Syncer {
   }
 
   async backfillChannel(userId: string, token: string, channelId: string, onPage?: (count: number) => void): Promise<number> {
+    const key = `${userId}:${channelId}`;
+    this.open.add(key);
+    try {
+      return await this.backfillChannelBody(userId, token, channelId, onPage);
+    } finally {
+      this.open.delete(key);
+    }
+  }
+
+  private async backfillChannelBody(userId: string, token: string, channelId: string, onPage?: (count: number) => void): Promise<number> {
     const store = this.options.users.get(userId);
     const existing = store.getChannel(channelId);
     const fromScratch = !existing?.oldestSyncedId;
@@ -361,8 +376,20 @@ export class Syncer {
   }
 
   private finish(userId: string): void {
+    if (this.cancel.has(userId)) {
+      this.options.registry.setStatus(userId, 'paused');
+      return;
+    }
+    const pending =
+      this.options.users.hasFile(userId) &&
+      this.options.users.get(userId).listTracked().some((channel) => !channel.backfillDone);
+    if (pending) {
+      this.options.registry.setStatus(userId, 'syncing');
+      return;
+    }
     this.options.registry.setStatus(userId, 'ready');
     this.options.registry.setLastSync(userId);
+    this.options.registry.clearProgress(userId);
     this.options.onSynced?.(userId);
   }
 
