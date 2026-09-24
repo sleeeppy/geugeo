@@ -11,6 +11,7 @@ export interface SyncerOptions {
   api: Pick<UserApi, 'getChannels' | 'getMessages'>;
   masterKey: Buffer;
   log: Logger;
+  onSynced?: (userId: string) => void;
 }
 
 export class Syncer {
@@ -35,6 +36,7 @@ export class Syncer {
       }
       this.options.registry.setStatus(userId, 'ready');
       this.options.registry.setLastSync(userId);
+      this.options.onSynced?.(userId);
     } catch (error) {
       this.handleFailure(userId, error);
     }
@@ -56,6 +58,7 @@ export class Syncer {
       }
       this.options.registry.setStatus(userId, 'ready');
       this.options.registry.setLastSync(userId);
+      this.options.onSynced?.(userId);
     } catch (error) {
       this.handleFailure(userId, error);
     }

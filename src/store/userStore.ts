@@ -248,8 +248,12 @@ export class UserStore {
   }
 
   countEmbeddings(): { embedded: number; eligible: number } {
-    const embedded = (this.db.prepare('SELECT COUNT(*) AS n FROM embeddings').get() as { n: number }).n;
-    const eligible = (this.db.prepare('SELECT COUNT(*) AS n FROM messages').get() as { n: number }).n;
+    const embedded = (
+      this.db.prepare('SELECT COUNT(*) AS n FROM embeddings WHERE length(vec) = 1536').get() as { n: number }
+    ).n;
+    const eligible = (
+      this.db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE length(trim(search_text)) >= 4`).get() as { n: number }
+    ).n;
     return { embedded, eligible };
   }
 
