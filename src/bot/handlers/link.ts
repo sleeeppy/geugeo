@@ -74,28 +74,9 @@ export async function handleLinkModal(interaction: ModalSubmitInteraction, ctx: 
       userId: interaction.user.id,
       username: me.global_name || me.username,
       tokenEnc: encoded,
-      status: 'syncing',
+      status: 'ready',
     });
-    ctx.queue.enqueue(`backfill:${interaction.user.id}`, () => ctx.syncer.backfillUser(interaction.user.id));
-    ctx.semantic.kick(interaction.user.id);
     await interaction.editReply(renderNotice(`### 연동\n${COPY.linked}`, COLOR.green));
-    const started = Date.now();
-    const timer = setInterval(() => {
-      if (Date.now() - started > 14 * 60 * 1000) {
-        clearInterval(timer);
-        return;
-      }
-      const user = ctx.registry.get(interaction.user.id);
-      if (!user || user.status === 'ready' || user.status === 'error' || user.status === 'token_invalid') {
-        clearInterval(timer);
-      }
-      const progress = user?.progress;
-      const line = progress
-        ? `대화 ${progress.channelsDone}/${progress.channelsTotal} · 메시지 ${progress.messages.toLocaleString('ko-KR')}개`
-        : '시작하는 중이에요.';
-      void interaction.editReply(renderNotice(`### 연동\n${COPY.linked}\n-# ${line}`, COLOR.green)).catch(() => clearInterval(timer));
-    }, 10_000);
-    timer.unref?.();
   } catch (error) {
     if (error instanceof TokenInvalidError) {
       await interaction.editReply(renderNotice('토큰이 거부됐어요. 다시 복사해서 넣어 주세요.', COLOR.red));

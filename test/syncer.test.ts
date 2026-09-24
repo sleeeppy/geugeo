@@ -46,7 +46,8 @@ describe('syncer', () => {
       },
     };
     const first = new Syncer({ registry: fx.registry, users: fx.users, api, masterKey: fx.master, log: createLogger('error') });
-    await first.backfillUser(userId);
+    expect(await first.beginCollect(userId, '10')).toBe('민수');
+    await first.collectChannel(userId, '10');
     expect(fx.registry.get(userId)?.status).toBe('error');
     const channel = fx.users.get(userId).getChannel('10');
     expect(channel?.oldestSyncedId).toBe('100');
@@ -85,6 +86,7 @@ describe('syncer', () => {
       oldestSyncedId: '1',
       backfillDone: true,
       messageCount: 1,
+      tracked: true,
     });
     store.upsertMessages([
       {
@@ -137,9 +139,44 @@ describe('syncer', () => {
       },
     };
     const syncer = new Syncer({ registry: fx.registry, users: fx.users, api, masterKey: fx.master, log: createLogger('error') });
-    await syncer.backfillUser(userId);
+    await expect(syncer.beginCollect(userId, '10')).rejects.toBeInstanceOf(TokenInvalidError);
     const user = fx.registry.get(userId);
     expect(user?.tokenEnc).toBeNull();
     expect(user?.status).toBe('token_invalid');
+  });
+
+  it('collects only the DM where collection was requested', async () => {
+    const fx = fixtureStore();
+    opened.push(fx);
+    const userId = '100000000000000024';
+    fx.registry.upsert({
+      userId,
+      username: 'me',
+      tokenEnc: encryptSecret(tokenKey(fx.master), 'tok', userId),
+      status: 'ready',
+    });
+    const seen: string[] = [];
+    const api = {
+      async getChannels() {
+        return [
+          { id: '10', type: 1, last_message_id: '2', recipients: [{ id: '2', username: 'minsu', global_name: '민수' }] },
+          { id: '11', type: 1, last_message_id: '9', recipients: [{ id: '3', username: 'other', global_name: '다른사람' }] },
+        ];
+      },
+      async getMessages(_token: string, channelId: string, query: { before?: string }) {
+        seen.push(channelId);
+        if (query.before) return [];
+        return channelId === '10' ? [msg('2'), msg('1')] : [msg('9')];
+      },
+    };
+    const syncer = new Syncer({ registry: fx.registry, users: fx.users, api, masterKey: fx.master, log: createLogger('error') });
+    expect(await syncer.beginCollect(userId, '10')).toBe('민수');
+    await syncer.collectChannel(userId, '10');
+    const store = fx.users.get(userId);
+    expect(store.listChannels().map((channel) => channel.id)).toEqual(['10']);
+    expect(store.listTracked()).toHaveLength(1);
+    expect(seen.every((id) => id === '10')).toBe(true);
+    expect(store.countMessages()).toBe(2);
+    expect(fx.registry.get(userId)?.status).toBe('ready');
   });
 });

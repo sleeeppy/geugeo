@@ -10,6 +10,7 @@ export function startScheduler(input: {
   intervalMin: number;
   log: Logger;
 }): { stop: () => void } {
+  input.syncer.settleIdle();
   const run = () => {
     for (const userId of input.syncer.resumeIncomplete()) {
       input.queue.enqueue(`backfill:${userId}`, () => input.syncer.backfillUser(userId));

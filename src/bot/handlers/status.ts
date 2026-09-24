@@ -17,7 +17,7 @@ export async function handleStatus(interaction: ChatInputCommandInteraction, ctx
   }
   const counts = ctx.users.hasFile(interaction.user.id)
     ? {
-        channels: ctx.users.get(interaction.user.id).listChannels().length,
+        channels: ctx.users.get(interaction.user.id).listTracked().length,
         messages: ctx.users.get(interaction.user.id).countMessages(),
       }
     : { channels: 0, messages: 0 };

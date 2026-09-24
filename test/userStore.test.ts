@@ -44,6 +44,37 @@ describe('userStore', () => {
     expect(rows).toHaveLength(0);
     expect(store.getMessage('1')).toBeNull();
   });
+
+  it('drops messages collected before per-DM opt-in', () => {
+    const fx = fixtureStore();
+    opened.push(fx);
+    const userId = '100000000000000009';
+    const db = openEncrypted(userDbPath(fx.dir, userId), userDbKey(fx.master, userId));
+    db.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE channels (
+        id TEXT PRIMARY KEY, type INTEGER NOT NULL, recipient_id TEXT NOT NULL, recipient_name TEXT NOT NULL,
+        last_message_id TEXT, newest_synced_id TEXT, oldest_synced_id TEXT,
+        backfill_done INTEGER NOT NULL DEFAULT 0, message_count INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE messages (
+        id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, author_id TEXT NOT NULL, author_name TEXT NOT NULL,
+        content TEXT NOT NULL DEFAULT '', search_text TEXT NOT NULL, ts INTEGER NOT NULL, edited_ts INTEGER,
+        has_link INTEGER NOT NULL DEFAULT 0, has_image INTEGER NOT NULL DEFAULT 0, has_file INTEGER NOT NULL DEFAULT 0,
+        has_youtube INTEGER NOT NULL DEFAULT 0, attachments TEXT
+      );
+      CREATE TABLE embeddings (message_id TEXT PRIMARY KEY, vec BLOB NOT NULL);
+      CREATE TABLE backfill_seen (channel_id TEXT NOT NULL, message_id TEXT NOT NULL, PRIMARY KEY (channel_id, message_id));
+      INSERT INTO meta (key, value) VALUES ('schema_version', '1');
+      INSERT INTO channels (id, type, recipient_id, recipient_name, message_count) VALUES ('10', 1, '2', '민수', 1);
+      INSERT INTO messages (id, channel_id, author_id, author_name, content, search_text, ts) VALUES ('1', '10', '2', '민수', '비밀', '비밀', 1);
+    `);
+    db.close();
+    const store = fx.users.get(userId);
+    expect(store.listChannels()).toHaveLength(0);
+    expect(store.countMessages()).toBe(0);
+    expect(store.getChannel('10')).toBeNull();
+  });
 });
 
 describe('registry', () => {

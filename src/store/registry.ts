@@ -90,6 +90,10 @@ export class Registry {
     this.db.prepare('UPDATE users SET progress_json = ? WHERE user_id = ?').run(JSON.stringify(progress), userId);
   }
 
+  clearProgress(userId: string): void {
+    this.db.prepare('UPDATE users SET progress_json = NULL WHERE user_id = ?').run(userId);
+  }
+
   setLastSync(userId: string, at = Date.now()): void {
     this.db.prepare('UPDATE users SET last_sync_at = ? WHERE user_id = ?').run(at, userId);
   }

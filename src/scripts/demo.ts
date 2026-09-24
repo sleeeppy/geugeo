@@ -22,6 +22,7 @@ function seed(users: UserDirectory): void {
     oldestSyncedId: null,
     backfillDone: true,
     messageCount: 0,
+    tracked: true,
   });
   store.upsertChannel({
     id: '333',
@@ -33,6 +34,7 @@ function seed(users: UserDirectory): void {
     oldestSyncedId: null,
     backfillDone: true,
     messageCount: 0,
+    tracked: true,
   });
   const specials = [
     normalizeMessage(
