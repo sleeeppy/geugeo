@@ -1,4 +1,4 @@
-import { ChannelType, type ChatInputCommandInteraction, type ButtonInteraction, type DMChannel, type StringSelectMenuInteraction } from 'discord.js';
+import { type ChatInputCommandInteraction, type ButtonInteraction, type StringSelectMenuInteraction } from 'discord.js';
 import { searchMessages, SearchInputError, type AuthorFilter, type KindFilter, type PeriodFilter, type SearchHit } from '../../search/query.js';
 import type { RegistryUser } from '../../store/registry.js';
 import { isAllowed } from '../guard.js';
@@ -7,6 +7,7 @@ import type { SearchSession, SessionFilters } from '../sessions.js';
 import { renderNotLinked, renderNotice, renderSearch, type Rendered } from '../ui/results.js';
 import { channelMissingView, deniedView, emptyView, errorView, sessionExpiredView, syncingLine, tokenExpiredView } from '../ui/states.js';
 import { COLOR, COPY } from '../ui/theme.js';
+import { openDirectChannelId } from '../dmChannel.js';
 
 const DEFAULT_FILTERS: SessionFilters = { author: 'all', kind: 'all', period: 'all' };
 
@@ -176,10 +177,7 @@ function syncingNote(user: RegistryUser | null): string | undefined {
 }
 
 function currentDm(interaction: ChatInputCommandInteraction): string | null {
-  const channel = interaction.channel;
-  if (!channel || channel.type !== ChannelType.DM) return null;
-  if ((channel as DMChannel).recipientId === interaction.client.user?.id) return null;
-  return channel.id;
+  return openDirectChannelId(interaction);
 }
 
 function choice<T extends string>(value: string | null, fallback: T): T {
