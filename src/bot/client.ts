@@ -1,7 +1,7 @@
 import { Client, Events, type Interaction } from 'discord.js';
 import type { AppContext } from './context.js';
 import { handleAiSearch } from './handlers/aiSearch.js';
-import { handleCollect } from './handlers/collect.js';
+import { handleCollect, handleCollectAll } from './handlers/collect.js';
 import { handleLink, handleLinkButton, handleLinkModal } from './handlers/link.js';
 import { handleRecall, handleSearch, handleSearchComponent } from './handlers/search.js';
 import { handleReset, handleResetConfirm } from './handlers/reset.js';
@@ -32,6 +32,7 @@ async function route(interaction: Interaction, ctx: AppContext): Promise<void> {
       if (interaction.commandName === 'ai-search') return void handleAiSearch(interaction, ctx);
       if (interaction.commandName === 'link') return void handleLink(interaction, ctx);
       if (interaction.commandName === 'collect') return void handleCollect(interaction, ctx);
+      if (interaction.commandName === 'collect-all') return void handleCollectAll(interaction, ctx);
       if (interaction.commandName === 'stop') return void handleStop(interaction, ctx);
       if (interaction.commandName === 'reset') return void handleReset(interaction, ctx);
       if (interaction.commandName === 'unlink') return void handleUnlink(interaction, ctx);
