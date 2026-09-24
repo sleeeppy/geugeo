@@ -2,7 +2,7 @@ import { REST, Routes } from 'discord.js';
 import { loadConfig } from '../config.js';
 import { buildCommands } from '../bot/commands.js';
 
-const config = loadConfig({ requireDiscord: true });
+const config = loadConfig({ requireDiscord: true, requireMasterKey: false });
 const rest = new REST({ version: '10' }).setToken(config.botToken);
 const body = buildCommands().map((command) => command.toJSON());
 const route = Routes.applicationCommands(config.appId);
