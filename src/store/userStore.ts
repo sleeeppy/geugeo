@@ -243,6 +243,13 @@ export class UserStore {
     this.db.prepare('DELETE FROM messages WHERE id = ?').run(id);
   }
 
+  wipe(): { messages: number; channels: number } {
+    const messages = this.countMessages();
+    const channels = this.listChannels().length;
+    this.db.exec(`DELETE FROM messages; DELETE FROM embeddings; DELETE FROM backfill_seen; DELETE FROM channels;`);
+    return { messages, channels };
+  }
+
   getMessage(id: string): StoredMessage | null {
     const row = this.db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as MessageRow | undefined;
     return row ? mapMessage(row) : null;

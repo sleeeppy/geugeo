@@ -38,6 +38,7 @@ export async function handleStatus(interaction: ChatInputCommandInteraction, ctx
 function statusLine(status: string): string {
   if (status === 'ready') return '준비됐어요.';
   if (status === 'syncing') return '대화를 모으는 중이에요.';
+  if (status === 'paused') return '수집을 멈춰 둔 상태예요.';
   if (status === 'token_invalid') return COPY.tokenExpired;
   return '마지막 동기화에서 문제가 있었어요.';
 }

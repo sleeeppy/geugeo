@@ -3,8 +3,10 @@ import type { AppContext } from './context.js';
 import { handleAiSearch } from './handlers/aiSearch.js';
 import { handleCollect } from './handlers/collect.js';
 import { handleLink, handleLinkButton, handleLinkModal } from './handlers/link.js';
-import { handleSearch, handleSearchComponent } from './handlers/search.js';
+import { handleRecall, handleSearch, handleSearchComponent } from './handlers/search.js';
+import { handleReset, handleResetConfirm } from './handlers/reset.js';
 import { handleStatus } from './handlers/status.js';
+import { handleStop } from './handlers/stop.js';
 import { handleSync } from './handlers/sync.js';
 import { handleUnlink, handleUnlinkConfirm } from './handlers/unlink.js';
 import { errorView } from './ui/states.js';
@@ -26,9 +28,12 @@ async function route(interaction: Interaction, ctx: AppContext): Promise<void> {
     }
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === 'search') return void handleSearch(interaction, ctx);
+      if (interaction.commandName === 'recall') return void handleRecall(interaction, ctx);
       if (interaction.commandName === 'ai-search') return void handleAiSearch(interaction, ctx);
       if (interaction.commandName === 'link') return void handleLink(interaction, ctx);
       if (interaction.commandName === 'collect') return void handleCollect(interaction, ctx);
+      if (interaction.commandName === 'stop') return void handleStop(interaction, ctx);
+      if (interaction.commandName === 'reset') return void handleReset(interaction, ctx);
       if (interaction.commandName === 'unlink') return void handleUnlink(interaction, ctx);
       if (interaction.commandName === 'status') return void handleStatus(interaction, ctx);
       if (interaction.commandName === 'sync') return void handleSync(interaction, ctx);
@@ -39,6 +44,7 @@ async function route(interaction: Interaction, ctx: AppContext): Promise<void> {
         return void handleLinkButton(interaction, ctx);
       }
       if (interaction.customId === 'gg:unlink:confirm') return void handleUnlinkConfirm(interaction, ctx);
+      if (interaction.customId === 'gg:reset:confirm') return void handleResetConfirm(interaction, ctx);
       if (interaction.customId.startsWith('gg:page:')) return void handleSearchComponent(interaction, ctx);
       return;
     }

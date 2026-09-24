@@ -29,6 +29,21 @@ export class JobQueue {
     void this.pump();
   }
 
+  get currentName(): string | null {
+    return this.current;
+  }
+
+  cancelMatching(match: (name: string) => boolean): string[] {
+    const removed: string[] = [];
+    for (let index = this.jobs.length - 1; index >= 0; index -= 1) {
+      const job = this.jobs[index];
+      if (!job || !match(job.name)) continue;
+      removed.push(job.name);
+      this.jobs.splice(index, 1);
+    }
+    return removed;
+  }
+
   private current: string | null = null;
 
   private async pump(): Promise<void> {

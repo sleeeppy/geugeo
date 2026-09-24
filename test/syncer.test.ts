@@ -179,4 +179,35 @@ describe('syncer', () => {
     expect(store.countMessages()).toBe(2);
     expect(fx.registry.get(userId)?.status).toBe('ready');
   });
+
+  it('stops before writing the page that was already in flight', async () => {
+    const fx = fixtureStore();
+    opened.push(fx);
+    const userId = '100000000000000025';
+    fx.registry.upsert({
+      userId,
+      username: 'me',
+      tokenEnc: encryptSecret(tokenKey(fx.master), 'tok', userId),
+      status: 'ready',
+    });
+    let calls = 0;
+    let stop = (): void => undefined;
+    const api = {
+      async getChannels() {
+        return [{ id: '10', type: 1, last_message_id: '1', recipients: [{ id: '2', username: 'minsu', global_name: '민수' }] }];
+      },
+      async getMessages() {
+        calls += 1;
+        stop();
+        return [msg('1')];
+      },
+    };
+    const syncer = new Syncer({ registry: fx.registry, users: fx.users, api, masterKey: fx.master, log: createLogger('error') });
+    stop = () => syncer.requestStop(userId);
+    await syncer.beginCollect(userId, '10');
+    await syncer.collectChannel(userId, '10');
+    expect(calls).toBe(1);
+    expect(fx.users.get(userId).countMessages()).toBe(0);
+    expect(fx.registry.get(userId)?.status).toBe('paused');
+  });
 });
