@@ -16,7 +16,7 @@ export function startScheduler(input: {
       input.queue.enqueue(`backfill:${userId}`, () => input.syncer.backfillUser(userId));
     }
     for (const user of input.registry.list()) {
-      if (!user.tokenEnc || user.status === 'syncing') continue;
+      if (!user.tokenEnc || user.status === 'syncing' || user.status === 'paused') continue;
       input.queue.enqueue(`incremental:${user.userId}`, () => input.syncer.incrementalUser(user.userId));
     }
   };

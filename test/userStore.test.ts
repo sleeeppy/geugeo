@@ -45,6 +45,28 @@ describe('userStore', () => {
     expect(store.getMessage('1')).toBeNull();
   });
 
+  it('stores one row when the same message arrives twice', () => {
+    const fx = fixtureStore();
+    opened.push(fx);
+    const store = fx.users.get('100000000000000001');
+    store.upsertChannel(channel({ id: '10' }));
+    store.upsertMessages([message({ id: '1', content: '같은 메시지', searchText: '같은 메시지' })]);
+    store.upsertMessages([message({ id: '1', content: '같은 메시지 수정', searchText: '같은 메시지 수정' })]);
+    expect(store.countMessages()).toBe(1);
+    expect(store.getMessage('1')?.content).toBe('같은 메시지 수정');
+  });
+
+  it('deletes saved messages and channels without removing the database', () => {
+    const fx = fixtureStore();
+    opened.push(fx);
+    const store = fx.users.get('100000000000000001');
+    store.upsertChannel(channel({ id: '10' }));
+    store.upsertMessages([message({ id: '1', content: '지울 메시지', searchText: '지울 메시지' })]);
+    expect(store.wipe()).toEqual({ messages: 1, channels: 1 });
+    expect(store.countMessages()).toBe(0);
+    expect(store.listChannels()).toHaveLength(0);
+  });
+
   it('drops messages collected before per-DM opt-in', () => {
     const fx = fixtureStore();
     opened.push(fx);

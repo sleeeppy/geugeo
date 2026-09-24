@@ -4,7 +4,7 @@ import type Database from 'better-sqlite3-multiple-ciphers';
 import { registryKey } from '../security/crypto.js';
 import { openEncrypted } from './openDb.js';
 
-export type UserStatus = 'syncing' | 'ready' | 'error' | 'token_invalid';
+export type UserStatus = 'syncing' | 'ready' | 'error' | 'token_invalid' | 'paused';
 
 export interface SyncProgress {
   channelsDone: number;

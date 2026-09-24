@@ -14,8 +14,24 @@ export interface SyncerOptions {
   onSynced?: (userId: string) => void;
 }
 
+class SyncStopped extends Error {
+  constructor() {
+    super('수집을 멈췄어요.');
+    this.name = 'SyncStopped';
+  }
+}
+
 export class Syncer {
   private readonly inflight = new Set<string>();
+  private readonly cancel = new Set<string>();
+
+  requestStop(userId: string): void {
+    this.cancel.add(userId);
+  }
+
+  clearStop(userId: string): void {
+    this.cancel.delete(userId);
+  }
 
   constructor(private readonly options: SyncerOptions) {}
 
@@ -57,13 +73,16 @@ export class Syncer {
     if (!token) return;
     const store = this.options.users.get(userId);
     if (!store.getChannel(channelId)?.tracked) return;
-    this.options.registry.setStatus(userId, 'syncing');
     try {
+      this.haltIfStopped(userId);
+      this.options.registry.setStatus(userId, 'syncing');
       await this.backfillChannel(userId, token, channelId, (messages) => {
         this.options.registry.setProgress(userId, { channelsDone: 0, channelsTotal: 1, messages });
       });
+      this.haltIfStopped(userId);
       const current = store.getChannel(channelId);
       if (current?.backfillDone) await this.incrementalChannel(userId, channelId);
+      this.haltIfStopped(userId);
       this.options.registry.setProgress(userId, { channelsDone: 1, channelsTotal: 1, messages: store.countMessages(channelId) });
       this.finish(userId);
     } catch (error) {
@@ -87,11 +106,13 @@ export class Syncer {
       let messages = 0;
       let done = 0;
       for (const channel of ordered) {
+        this.haltIfStopped(userId);
         const count = await this.backfillChannel(userId, token, channel.id);
         messages += count;
         done += 1;
         this.options.registry.setProgress(userId, { channelsDone: done, channelsTotal: ordered.length, messages });
       }
+      this.haltIfStopped(userId);
       this.finish(userId);
     } catch (error) {
       this.handleFailure(userId, error);
@@ -106,6 +127,7 @@ export class Syncer {
       const channels = this.options.users.get(userId).listTracked();
       if (channels.length === 0) return;
       for (const channel of channels) {
+        this.haltIfStopped(userId);
         if (!channel.backfillDone) {
           await this.backfillChannel(userId, token, channel.id);
           continue;
@@ -114,6 +136,7 @@ export class Syncer {
           await this.incrementalChannel(userId, channel.id);
         }
       }
+      this.haltIfStopped(userId);
       this.finish(userId);
     } catch (error) {
       this.handleFailure(userId, error);
@@ -136,7 +159,9 @@ export class Syncer {
       }
       let after = channel.newestSyncedId;
       while (true) {
+        this.haltIfStopped(userId);
         const page = sortById(await this.options.api.getMessages(token, channelId, { limit: 100, after }));
+        this.haltIfStopped(userId);
         if (page.length === 0) break;
         const stored = this.storePage(userId, channelId, page);
         const maxId = stored[stored.length - 1]?.id ?? after;
@@ -147,6 +172,7 @@ export class Syncer {
       }
     } catch (error) {
       this.handleFailure(userId, error);
+      if (error instanceof SyncStopped) throw error;
     } finally {
       this.inflight.delete(key);
     }
@@ -161,9 +187,11 @@ export class Syncer {
     let newest = existing?.newestSyncedId ?? null;
     let count = existing?.messageCount ?? 0;
     while (true) {
+      this.haltIfStopped(userId);
       let page: ApiRawMessage[];
       try {
         page = await this.options.api.getMessages(token, channelId, { limit: 100, before });
+        this.haltIfStopped(userId);
       } catch (error) {
         if (error instanceof UserApiError && (error.status === 403 || error.status === 404)) {
           this.options.log.warn('채널을 건너뛰어요.', { userId, channelId, status: error.status });
@@ -193,7 +221,7 @@ export class Syncer {
   resumeIncomplete(): string[] {
     const pending: string[] = [];
     for (const user of this.options.registry.list()) {
-      if (!user.tokenEnc) continue;
+      if (!user.tokenEnc || user.status === 'paused') continue;
       if (!this.options.users.hasFile(user.userId)) continue;
       const channels = this.options.users.get(user.userId).listTracked();
       if (channels.some((channel) => !channel.backfillDone)) pending.push(user.userId);
@@ -240,6 +268,7 @@ export class Syncer {
   }
 
   private storePage(userId: string, channelId: string, page: ApiRawMessage[]): StoredMessage[] {
+    if (this.cancel.has(userId)) return [];
     const stored = sortById(page)
       .map((message) => normalizeMessage(message, channelId))
       .filter((message): message is StoredMessage => message != null);
@@ -253,7 +282,15 @@ export class Syncer {
     return decryptSecret(tokenKey(this.options.masterKey), user.tokenEnc, userId);
   }
 
+  private haltIfStopped(userId: string): void {
+    if (!this.cancel.has(userId)) return;
+    this.cancel.delete(userId);
+    this.options.registry.setStatus(userId, 'paused');
+    throw new SyncStopped();
+  }
+
   private handleFailure(userId: string, error: unknown): void {
+    if (error instanceof SyncStopped) return;
     if (error instanceof TokenInvalidError) {
       this.options.registry.clearToken(userId);
       this.options.log.warn('토큰이 만료되어 삭제했어요.', { userId });

@@ -1,17 +1,31 @@
-import { ChannelType, type ChatInputCommandInteraction, type ButtonInteraction, type StringSelectMenuInteraction } from 'discord.js';
+import { ChannelType, type ChatInputCommandInteraction, type ButtonInteraction, type DMChannel, type StringSelectMenuInteraction } from 'discord.js';
 import { searchMessages, SearchInputError, type AuthorFilter, type KindFilter, type PeriodFilter, type SearchHit } from '../../search/query.js';
 import type { RegistryUser } from '../../store/registry.js';
 import { isAllowed } from '../guard.js';
 import type { AppContext } from '../context.js';
 import type { SearchSession, SessionFilters } from '../sessions.js';
-import { renderNotLinked, renderSearch, type Rendered } from '../ui/results.js';
+import { renderNotLinked, renderNotice, renderSearch, type Rendered } from '../ui/results.js';
 import { channelMissingView, deniedView, emptyView, errorView, sessionExpiredView, syncingLine, tokenExpiredView } from '../ui/states.js';
-import { COPY } from '../ui/theme.js';
+import { COLOR, COPY } from '../ui/theme.js';
 
 const DEFAULT_FILTERS: SessionFilters = { author: 'all', kind: 'all', period: 'all' };
 
 export async function handleSearch(interaction: ChatInputCommandInteraction, ctx: AppContext): Promise<void> {
   if (!(await allow(interaction, ctx))) return;
+  const channelId = currentDm(interaction);
+  if (!channelId) {
+    await interaction.reply(renderNotice(COPY.searchHereOnly, COLOR.yellow));
+    return;
+  }
+  await executeSearch(interaction, ctx, channelId);
+}
+
+export async function handleRecall(interaction: ChatInputCommandInteraction, ctx: AppContext): Promise<void> {
+  if (!(await allow(interaction, ctx))) return;
+  await executeSearch(interaction, ctx, undefined);
+}
+
+async function executeSearch(interaction: ChatInputCommandInteraction, ctx: AppContext, scopedChannelId: string | undefined): Promise<void> {
   await interaction.deferReply({ flags: 64 });
   try {
     const query = interaction.options.getString('query', true);
@@ -20,11 +34,10 @@ export async function handleSearch(interaction: ChatInputCommandInteraction, ctx
       kind: choice(interaction.options.getString('kind'), DEFAULT_FILTERS.kind),
       period: choice(interaction.options.getString('period'), DEFAULT_FILTERS.period),
     };
-    const channelId = resolveChannel(interaction, interaction.options.getString('with'));
     const rendered = await runSearch(ctx, {
       ownerId: interaction.user.id,
       query,
-      channelId,
+      channelId: scopedChannelId,
       filters,
       mode: 'keyword',
       page: 0,
@@ -162,9 +175,11 @@ function syncingNote(user: RegistryUser | null): string | undefined {
   return syncingLine(user.progress.channelsDone, user.progress.channelsTotal, user.progress.messages);
 }
 
-function resolveChannel(interaction: ChatInputCommandInteraction, selected: string | null): string | undefined {
-  if (interaction.channel?.type === ChannelType.DM) return interaction.channelId;
-  return selected ?? undefined;
+function currentDm(interaction: ChatInputCommandInteraction): string | null {
+  const channel = interaction.channel;
+  if (!channel || channel.type !== ChannelType.DM) return null;
+  if ((channel as DMChannel).recipientId === interaction.client.user?.id) return null;
+  return channel.id;
 }
 
 function choice<T extends string>(value: string | null, fallback: T): T {

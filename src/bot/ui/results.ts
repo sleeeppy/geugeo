@@ -85,44 +85,70 @@ export function renderUnlinkConfirm(): Rendered {
   return payload([container.toJSON()]);
 }
 
+export function renderResetConfirm(): Rendered {
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR.red)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(COPY.resetAsk))
+    .addActionRowComponents(buttonRow('gg:reset:confirm', COPY.unlinkConfirm, ButtonStyle.Danger));
+  return payload([container.toJSON()]);
+}
+
 function compose(input: SearchViewInput, budget: number): Rendered {
   const pages = Math.max(1, Math.ceil(input.total / PAGE_SIZE));
   const page = Math.min(input.page, pages - 1);
-  const scope = input.scoped && input.recipientName ? `${input.recipientName}님과의 DM` : '모든 1:1 DM';
-  const title = input.mode === 'ai' ? `### ✨ AI 검색 (베타)\n${escapeMarkdown(input.query)}` : `### 🔍 ${escapeMarkdown(input.query)}`;
-  const header = [title, `${scope} · 결과 ${input.total.toLocaleString('ko-KR')}개`, input.syncingNote].filter(Boolean).join('\n');
+  const from = input.total === 0 ? 0 : page * PAGE_SIZE + 1;
+  const to = Math.min(input.total, from + input.hits.length - 1);
+  const scope = input.scoped && input.recipientName ? `${escapeMarkdown(input.recipientName)} · 이 대화` : '모아 둔 DM 전체';
+  const title = input.mode === 'ai' ? '### 그거 · 의미' : '### 그거';
+  const header = [
+    title,
+    `**${escapeMarkdown(input.query)}**`,
+    `-# ${scope} · ${input.total.toLocaleString('ko-KR')}개 · ${from.toLocaleString('ko-KR')}–${to.toLocaleString('ko-KR')}`,
+    input.syncingNote,
+  ]
+    .filter(Boolean)
+    .join('\n');
   const container = new ContainerBuilder().setAccentColor(input.mode === 'ai' ? COLOR.yellow : COLOR.blurple);
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(header, 500)));
   container.addSeparatorComponents(new SeparatorBuilder());
   input.hits.forEach((hit, index) => {
     if (index > 0) container.addSeparatorComponents(new SeparatorBuilder().setDivider(false).setSpacing(SeparatorSpacingSize.Small));
     const snippet = input.mode === 'ai' ? makeSnippet(hit, [], budget) : makeSnippet(hit, termsOf(input.query), budget);
-    const when = `<t:${Math.floor(hit.ts / 1000)}:f>`;
-    const where = input.scoped ? '' : `\n-# ${escapeMarkdown(hit.recipientName ?? 'DM')}와의 DM`;
-    const body = `**${escapeMarkdown(hit.authorName)}** · ${when}${where}\n${snippet}${youtubeLine(hit)}`;
+    const when = `<t:${Math.floor(hit.ts / 1000)}:R>`;
+    const where = input.scoped ? '' : `-# ${escapeMarkdown(hit.recipientName ?? 'DM')}\n`;
+    const quoted = snippet
+      .split('\n')
+      .map((line) => `> ${line}`)
+      .join('\n');
+    const body = `${where}**${escapeMarkdown(hit.authorName)}** · ${when}\n${quoted}${metaLine(hit)}`;
     const section = new SectionBuilder()
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(body, 1800)))
       .setButtonAccessory(
         new ButtonBuilder()
           .setStyle(ButtonStyle.Link)
-          .setLabel('이동')
+          .setLabel('열기')
           .setURL(`https://discord.com/channels/@me/${hit.channelId}/${hit.id}`),
       );
     container.addSectionComponents(section);
   });
   container.addSeparatorComponents(new SeparatorBuilder());
-  const foot = input.mode === 'ai' ? `-# ${page + 1} / ${pages} 페이지\n-# ${COPY.aiFoot}` : `-# ${page + 1} / ${pages} 페이지 · 최신순`;
+  const foot = input.mode === 'ai' ? `-# ${COPY.aiFoot}` : '-# 최신순';
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(foot));
   const rows = [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`gg:page:${input.sessionId}:${page - 1}`)
-        .setLabel('◀ 이전')
+        .setLabel('이전')
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(page <= 0),
       new ButtonBuilder()
+        .setCustomId(`gg:page:${input.sessionId}:stay`)
+        .setLabel(`${page + 1} / ${pages}`)
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(true),
+      new ButtonBuilder()
         .setCustomId(`gg:page:${input.sessionId}:${page + 1}`)
-        .setLabel('다음 ▶')
+        .setLabel('다음')
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(page + 1 >= pages),
     ),
@@ -170,13 +196,25 @@ function buttonRow(customId: string, label: string, style = ButtonStyle.Primary)
   return new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(customId).setLabel(label).setStyle(style));
 }
 
-function youtubeLine(hit: SearchHit): string {
+function metaLine(hit: SearchHit): string {
+  const tags: string[] = [];
+  if (hit.hasYoutube) tags.push('유튜브');
+  else if (hit.hasLink) tags.push('링크');
+  if (hit.hasImage) tags.push('이미지');
+  if (hit.hasFile) tags.push('파일');
+  if (hit.attachments.length > 0) tags.push(hit.attachments.map((attachment) => attachment.name).slice(0, 2).join(', '));
+  const youtube = youtubeTitle(hit);
+  if (youtube) tags.push(youtube);
+  return tags.length > 0 ? `\n-# ${tags.join(' · ')}` : '';
+}
+
+function youtubeTitle(hit: SearchHit): string {
   if (!hit.hasYoutube) return '';
   const extra = hit.searchText
     .split('\n')
     .map((line) => line.trim())
     .find((line) => line && line !== hit.content.trim() && !/^https?:\/\//i.test(line));
-  return extra ? `\n🔗 **YouTube** · ${escapeMarkdown(extra).slice(0, 120)}` : '\n🔗 **YouTube**';
+  return extra ? escapeMarkdown(extra).slice(0, 80) : '';
 }
 
 function termsOf(query: string): string[] {
