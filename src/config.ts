@@ -23,6 +23,7 @@ export interface AppConfig {
 
 export interface LoadOptions {
   requireDiscord?: boolean;
+  requireMasterKey?: boolean;
   env?: NodeJS.ProcessEnv;
   envFile?: string;
 }
@@ -65,6 +66,7 @@ export function loadConfig(options: LoadOptions = {}): AppConfig {
   }
   const env = options.env ?? process.env;
   const requireDiscord = options.requireDiscord ?? true;
+  const requireMasterKey = options.requireMasterKey ?? true;
   const missing: string[] = [];
   const botToken = env.DISCORD_BOT_TOKEN?.trim() ?? '';
   const appId = env.DISCORD_APP_ID?.trim() ?? '';
@@ -78,11 +80,15 @@ export function loadConfig(options: LoadOptions = {}): AppConfig {
   try {
     masterKey = readMasterKey(env);
   } catch (error) {
-    if (!requireDiscord && !env.MASTER_KEY && !env.MASTER_KEY_FILE && !env.CREDENTIALS_DIRECTORY) {
-      throw error;
+    if (!requireMasterKey) {
+      masterKey = Buffer.alloc(32);
+    } else {
+      if (!requireDiscord && !env.MASTER_KEY && !env.MASTER_KEY_FILE && !env.CREDENTIALS_DIRECTORY) {
+        throw error;
+      }
+      missing.push('MASTER_KEY');
+      masterKey = Buffer.alloc(32);
     }
-    missing.push('MASTER_KEY');
-    masterKey = Buffer.alloc(32);
   }
   if (missing.length > 0) {
     throw new ConfigError(`필수 설정이 비어 있어요: ${missing.join(', ')}`);

@@ -61,6 +61,7 @@ set -a
 # shellcheck disable=SC1091
 source /etc/geugeo/geugeo.env
 set +a
+export MASTER_KEY_FILE=/etc/geugeo/master-key
 npm run register
 
 install -m 644 deploy/geugeo.service /etc/systemd/system/geugeo.service
