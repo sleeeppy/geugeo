@@ -30,7 +30,7 @@ export async function handleResetConfirm(interaction: ButtonInteraction, ctx: Ap
   const userId = interaction.user.id;
   ctx.syncer.requestStop(userId);
   ctx.queue.cancelMatching((name) => isSyncJob(name, userId) || name === `embed:${userId}`);
-  const running = ctx.queue.currentName != null && isSyncJob(ctx.queue.currentName, userId);
+  const running = ctx.queue.isActive((name) => isSyncJob(name, userId));
   if (!running) ctx.syncer.clearStop(userId);
   const removed = ctx.users.hasFile(userId) ? ctx.users.get(userId).wipe() : { messages: 0, channels: 0 };
   ctx.registry.setStatus(userId, 'ready');

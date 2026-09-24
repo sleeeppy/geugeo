@@ -172,8 +172,8 @@ function matchesFilters(message: { authorId: string; ts: number; hasLink: boolea
 }
 
 function syncingNote(user: RegistryUser | null): string | undefined {
-  if (user?.status !== 'syncing' || !user.progress) return undefined;
-  return syncingLine(user.progress.channelsDone, user.progress.channelsTotal, user.progress.messages);
+  if (user?.status !== 'syncing') return undefined;
+  return syncingLine();
 }
 
 function currentDm(interaction: ChatInputCommandInteraction): string | null {

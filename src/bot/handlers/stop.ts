@@ -22,7 +22,7 @@ export async function handleStop(interaction: ChatInputCommandInteraction, ctx: 
   }
   ctx.syncer.requestStop(userId);
   const removed = ctx.queue.cancelMatching((name) => isSyncJob(name, userId) || name === `embed:${userId}`);
-  const running = ctx.queue.currentName != null && isSyncJob(ctx.queue.currentName, userId);
+  const running = ctx.queue.isActive((name) => isSyncJob(name, userId));
   if (!running) ctx.syncer.clearStop(userId);
   if (!running && removed.length === 0 && user.status !== 'syncing') {
     await interaction.reply(renderNotice(COPY.stopIdle));

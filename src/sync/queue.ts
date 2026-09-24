@@ -6,31 +6,42 @@ export interface Job {
 }
 
 export class JobQueue {
-  private running = false;
   private readonly jobs: Job[] = [];
+  private readonly active = new Set<string>();
 
   constructor(private readonly log: Logger) {}
 
   get size(): number {
-    return this.jobs.length + (this.running ? 1 : 0);
+    return this.jobs.length + this.active.size;
   }
 
   get idle(): boolean {
-    return !this.running && this.jobs.length === 0;
+    return this.active.size === 0 && this.jobs.length === 0;
   }
 
   get waiting(): number {
     return this.jobs.length;
   }
 
-  enqueue(name: string, run: () => Promise<void>): void {
-    if (this.jobs.some((job) => job.name === name) || (this.running && this.current === name)) return;
-    this.jobs.push({ name, run });
-    void this.pump();
+  get currentName(): string | null {
+    return this.active.values().next().value ?? null;
   }
 
-  get currentName(): string | null {
-    return this.current;
+  isActive(match: (name: string) => boolean): boolean {
+    for (const name of this.active) {
+      if (match(name)) return true;
+    }
+    return false;
+  }
+
+  hasWork(match: (name: string) => boolean): boolean {
+    return this.isActive(match) || this.jobs.some((job) => match(job.name));
+  }
+
+  enqueue(name: string, run: () => Promise<void>): void {
+    if (this.active.has(name) || this.jobs.some((job) => job.name === name)) return;
+    this.jobs.push({ name, run });
+    this.drain();
   }
 
   cancelMatching(match: (name: string) => boolean): string[] {
@@ -44,22 +55,20 @@ export class JobQueue {
     return removed;
   }
 
-  private current: string | null = null;
-
-  private async pump(): Promise<void> {
-    if (this.running) return;
-    this.running = true;
+  private drain(): void {
     while (this.jobs.length > 0) {
-      const job = this.jobs.shift();
-      if (!job) break;
-      this.current = job.name;
-      try {
-        await job.run();
-      } catch (error) {
-        this.log.error('작업이 실패했어요.', { job: job.name, error });
-      }
+      const next = this.jobs[0];
+      if (!next) break;
+      if (next.name.startsWith('embed:') && this.isActive((name) => !name.startsWith('embed:'))) break;
+      this.jobs.shift();
+      this.active.add(next.name);
+      void next
+        .run()
+        .catch((error) => this.log.error('작업이 실패했어요.', { job: next.name, error }))
+        .finally(() => {
+          this.active.delete(next.name);
+          this.drain();
+        });
     }
-    this.current = null;
-    this.running = false;
   }
 }

@@ -4,7 +4,8 @@ import { isAllowed } from '../guard.js';
 import type { AppContext } from '../context.js';
 import { renderCollectAllChoice, renderNotice } from '../ui/results.js';
 import { deniedView, errorView, tokenExpiredView } from '../ui/states.js';
-import { COLOR, COPY } from '../ui/theme.js';
+import { personRows } from '../personProgress.js';
+import { COLOR, COPY, formatPersonProgress, renderPersonList } from '../ui/theme.js';
 import { SyncStopped, type CollectScope } from '../../sync/syncer.js';
 import { openDirectChannelId } from '../dmChannel.js';
 
@@ -32,19 +33,29 @@ export async function handleCollect(interaction: ChatInputCommandInteraction, ct
       return;
     }
     ctx.queue.enqueue(`collect:${interaction.user.id}:${channelId}`, () => ctx.syncer.collectChannel(interaction.user.id, channelId));
-    await interaction.editReply(renderNotice(`### 수집\n${COPY.collecting(name)}`, COLOR.green));
+    const userId = interaction.user.id;
+    const initialCount = ctx.users.hasFile(userId) ? ctx.users.get(userId).countMessages(channelId) : 0;
+    const initialState = ctx.syncer.isCollecting(userId, channelId) ? 'active' : 'waiting';
+    await interaction.editReply(renderNotice(`### 수집\n${formatPersonProgress(name, initialCount, initialState)}`, COLOR.green));
     const started = Date.now();
     const timer = setInterval(() => {
       if (Date.now() - started > 14 * 60 * 1000) {
         clearInterval(timer);
         return;
       }
-      const current = ctx.registry.get(interaction.user.id);
-      if (!current || current.status === 'ready' || current.status === 'error' || current.status === 'token_invalid') {
-        clearInterval(timer);
-      }
-      const count = current?.progress?.messages ?? 0;
-      const line = current?.status === 'ready' ? COPY.collected(name, count) : `${COPY.collecting(name)}\n-# 메시지 ${count.toLocaleString('ko-KR')}개`;
+      const current = ctx.registry.get(userId);
+      const store = ctx.users.hasFile(userId) ? ctx.users.get(userId) : null;
+      const channel = store?.getChannel(channelId);
+      const count = store?.countMessages(channelId) ?? 0;
+      const state = channel?.backfillDone ? 'done' : ctx.syncer.isCollecting(userId, channelId) ? 'active' : 'waiting';
+      const stopped = !current || current.status === 'paused' || current.status === 'error' || current.status === 'token_invalid';
+      if (state === 'done' || stopped) clearInterval(timer);
+      const line =
+        current?.status === 'paused'
+          ? COPY.stopped
+          : state === 'done'
+            ? COPY.collected(name, count)
+            : formatPersonProgress(name, count, state);
       const accent = current?.status === 'error' || current?.status === 'token_invalid' ? COLOR.red : COLOR.green;
       void interaction.editReply(renderNotice(`### 수집\n${line}`, accent)).catch(() => clearInterval(timer));
     }, 3_000);
@@ -97,27 +108,26 @@ export async function handleCollectAllButton(interaction: ButtonInteraction, ctx
       await interaction.editReply(renderNotice(`### 전체수집\n${COPY.noDms}`, COLOR.yellow));
       return;
     }
-    ctx.queue.enqueue(`collect-all:${interaction.user.id}`, () => ctx.syncer.collectAll(interaction.user.id));
-    await interaction.editReply(renderNotice(`### 전체수집\n${COPY.collectingAll(scopeLabel, 0, total, 0)}`, COLOR.green));
+    const userId = interaction.user.id;
+    ctx.queue.enqueue(`collect-all:${userId}`, () => ctx.syncer.collectAll(userId));
+    await interaction.editReply(renderNotice(`### 전체수집\n${scopeLabel} 범위를 모으는 중이에요.`, COLOR.green));
     const started = Date.now();
     const timer = setInterval(() => {
       if (Date.now() - started > 14 * 60 * 1000) {
         clearInterval(timer);
         return;
       }
-      const current = ctx.registry.get(interaction.user.id);
-      if (!current || current.status === 'ready' || current.status === 'paused' || current.status === 'error' || current.status === 'token_invalid') {
-        clearInterval(timer);
-      }
-      const done = current?.progress?.channelsDone ?? 0;
-      const channels = current?.progress?.channelsTotal ?? total;
-      const messages = current?.progress?.messages ?? 0;
+      const current = ctx.registry.get(userId);
+      const rows = personRows(ctx, userId);
+      const messages = rows.reduce((sum, row) => sum + row.count, 0);
+      const stopped = !current || current.status === 'paused' || current.status === 'error' || current.status === 'token_invalid';
+      if (current?.status === 'ready' || stopped) clearInterval(timer);
       const line =
         current?.status === 'paused'
           ? COPY.stopped
           : current?.status === 'ready'
-            ? COPY.collectedAll(scopeLabel, channels, messages)
-            : COPY.collectingAll(scopeLabel, done, channels, messages);
+            ? `${COPY.collectedAll(scopeLabel, rows.length, messages)}\n${renderPersonList(rows)}`
+            : `${scopeLabel} 범위를 모으는 중이에요.\n${renderPersonList(rows)}`;
       const accent = current?.status === 'error' || current?.status === 'token_invalid' ? COLOR.red : COLOR.green;
       void interaction.editReply(renderNotice(`### 전체수집\n${line}`, accent)).catch(() => clearInterval(timer));
     }, 3_000);

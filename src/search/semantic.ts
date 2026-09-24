@@ -67,7 +67,7 @@ export class SemanticIndex {
 
   private async embedUser(userId: string): Promise<void> {
     if (!this.options.users.hasFile(userId)) return;
-    if (this.options.queue.waiting > 0) {
+    if (this.options.queue.hasWork((name) => !name.startsWith('embed:'))) {
       this.kick(userId);
       return;
     }
