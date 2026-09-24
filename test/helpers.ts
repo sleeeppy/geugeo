@@ -41,6 +41,7 @@ export function channel(partial: Partial<StoredChannel> & { id: string }): Store
     oldestSyncedId: null,
     backfillDone: false,
     messageCount: 0,
+    tracked: true,
     ...partial,
   };
 }

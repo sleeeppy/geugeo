@@ -83,10 +83,10 @@ async function runSearch(
   if (!user && !ctx.users.hasFile(input.ownerId)) return renderNotLinked();
   if (user?.status === 'token_invalid' && !ctx.users.hasFile(input.ownerId)) return tokenExpiredView();
   const storeReady = ctx.users.hasFile(input.ownerId);
-  if (input.channelId && storeReady && !ctx.users.get(input.ownerId).getChannel(input.channelId)) {
-    ctx.queue.enqueue(`incremental:${input.ownerId}`, () => ctx.syncer.incrementalUser(input.ownerId));
+  if (input.channelId && storeReady && !ctx.users.get(input.ownerId).getChannel(input.channelId)?.tracked) {
     return channelMissingView();
   }
+  if (input.channelId && !storeReady) return channelMissingView();
   if (input.channelId && user?.tokenEnc) {
     await Promise.race([ctx.syncer.incrementalChannel(input.ownerId, input.channelId), sleep(2000)]);
   }

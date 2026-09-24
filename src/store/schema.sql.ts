@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const USER_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS channels (
   newest_synced_id TEXT,
   oldest_synced_id TEXT,
   backfill_done INTEGER NOT NULL DEFAULT 0,
-  message_count INTEGER NOT NULL DEFAULT 0
+  message_count INTEGER NOT NULL DEFAULT 0,
+  tracked INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS messages (

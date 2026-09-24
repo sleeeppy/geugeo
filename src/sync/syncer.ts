@@ -3,7 +3,7 @@ import { normalizeMessage } from '../discord/normalize.js';
 import { TokenInvalidError, UserApiError, type ApiChannel, type ApiRawMessage, type UserApi } from '../discord/userApi.js';
 import type { Registry } from '../store/registry.js';
 import { decryptSecret, tokenKey } from '../security/crypto.js';
-import type { StoredChannel, StoredMessage, UserDirectory } from '../store/userStore.js';
+import type { StoredMessage, UserDirectory } from '../store/userStore.js';
 
 export interface SyncerOptions {
   registry: Registry;
@@ -19,13 +19,71 @@ export class Syncer {
 
   constructor(private readonly options: SyncerOptions) {}
 
+  async beginCollect(userId: string, channelId: string): Promise<string | null> {
+    const token = this.readToken(userId);
+    if (!token) return null;
+    let channels;
+    try {
+      channels = await this.options.api.getChannels(token);
+    } catch (error) {
+      this.handleFailure(userId, error);
+      throw error;
+    }
+    const remote = channels.find((channel) => isDirectMessage(channel) && channel.id === channelId);
+    if (!remote) return null;
+    const store = this.options.users.get(userId);
+    const current = store.getChannel(channelId);
+    const recipient = remote.recipients?.[0];
+    const name = recipient?.global_name || recipient?.username || '알 수 없음';
+    store.upsertChannel({
+      id: remote.id,
+      type: 1,
+      recipientId: recipient?.id ?? '',
+      recipientName: name,
+      lastMessageId: remote.last_message_id ?? null,
+      newestSyncedId: current?.newestSyncedId ?? null,
+      oldestSyncedId: current?.oldestSyncedId ?? null,
+      backfillDone: current?.backfillDone ?? false,
+      messageCount: current?.messageCount ?? 0,
+      tracked: true,
+    });
+    this.options.registry.setStatus(userId, 'syncing');
+    this.options.registry.setProgress(userId, { channelsDone: 0, channelsTotal: 1, messages: current?.messageCount ?? 0 });
+    return name;
+  }
+
+  async collectChannel(userId: string, channelId: string): Promise<void> {
+    const token = this.readToken(userId);
+    if (!token) return;
+    const store = this.options.users.get(userId);
+    if (!store.getChannel(channelId)?.tracked) return;
+    this.options.registry.setStatus(userId, 'syncing');
+    try {
+      await this.backfillChannel(userId, token, channelId, (messages) => {
+        this.options.registry.setProgress(userId, { channelsDone: 0, channelsTotal: 1, messages });
+      });
+      const current = store.getChannel(channelId);
+      if (current?.backfillDone) await this.incrementalChannel(userId, channelId);
+      this.options.registry.setProgress(userId, { channelsDone: 1, channelsTotal: 1, messages: store.countMessages(channelId) });
+      this.finish(userId);
+    } catch (error) {
+      this.handleFailure(userId, error);
+    }
+  }
+
   async backfillUser(userId: string): Promise<void> {
     const token = this.readToken(userId);
     if (!token) return;
+    const pending = this.options.users.get(userId).listTracked().filter((channel) => !channel.backfillDone);
+    if (pending.length === 0) return;
     this.options.registry.setStatus(userId, 'syncing');
     try {
-      const channels = await this.refreshChannels(userId, token);
-      const ordered = [...channels].sort((a, b) => compareId(b.lastMessageId, a.lastMessageId));
+      await this.refreshTracked(userId, token);
+      const ordered = this.options.users
+        .get(userId)
+        .listTracked()
+        .filter((channel) => !channel.backfillDone)
+        .sort((a, b) => compareId(b.lastMessageId, a.lastMessageId));
       let messages = 0;
       let done = 0;
       for (const channel of ordered) {
@@ -34,9 +92,7 @@ export class Syncer {
         done += 1;
         this.options.registry.setProgress(userId, { channelsDone: done, channelsTotal: ordered.length, messages });
       }
-      this.options.registry.setStatus(userId, 'ready');
-      this.options.registry.setLastSync(userId);
-      this.options.onSynced?.(userId);
+      this.finish(userId);
     } catch (error) {
       this.handleFailure(userId, error);
     }
@@ -46,7 +102,9 @@ export class Syncer {
     const token = this.readToken(userId);
     if (!token) return;
     try {
-      const channels = await this.refreshChannels(userId, token);
+      await this.refreshTracked(userId, token);
+      const channels = this.options.users.get(userId).listTracked();
+      if (channels.length === 0) return;
       for (const channel of channels) {
         if (!channel.backfillDone) {
           await this.backfillChannel(userId, token, channel.id);
@@ -56,9 +114,7 @@ export class Syncer {
           await this.incrementalChannel(userId, channel.id);
         }
       }
-      this.options.registry.setStatus(userId, 'ready');
-      this.options.registry.setLastSync(userId);
-      this.options.onSynced?.(userId);
+      this.finish(userId);
     } catch (error) {
       this.handleFailure(userId, error);
     }
@@ -73,7 +129,8 @@ export class Syncer {
       if (!token) return;
       const store = this.options.users.get(userId);
       const channel = store.getChannel(channelId);
-      if (!channel?.newestSyncedId || !channel.backfillDone) {
+      if (!channel?.tracked) return;
+      if (!channel.newestSyncedId || !channel.backfillDone) {
         await this.backfillChannel(userId, token, channelId);
         return;
       }
@@ -95,7 +152,7 @@ export class Syncer {
     }
   }
 
-  async backfillChannel(userId: string, token: string, channelId: string): Promise<number> {
+  async backfillChannel(userId: string, token: string, channelId: string, onPage?: (count: number) => void): Promise<number> {
     const store = this.options.users.get(userId);
     const existing = store.getChannel(channelId);
     const fromScratch = !existing?.oldestSyncedId;
@@ -129,6 +186,7 @@ export class Syncer {
       newest = newest && compareId(newest, maxId) > 0 ? newest : maxId;
       count = store.countMessages(channelId);
       store.updateChannelCursor({ id: channelId, oldestSyncedId: before, newestSyncedId: newest, backfillDone: false, messageCount: count });
+      onPage?.(count);
     }
   }
 
@@ -136,39 +194,49 @@ export class Syncer {
     const pending: string[] = [];
     for (const user of this.options.registry.list()) {
       if (!user.tokenEnc) continue;
-      if (!this.options.users.hasFile(user.userId)) {
-        pending.push(user.userId);
-        continue;
-      }
-      const channels = this.options.users.get(user.userId).listChannels();
-      if (channels.length === 0 || channels.some((channel) => !channel.backfillDone)) pending.push(user.userId);
+      if (!this.options.users.hasFile(user.userId)) continue;
+      const channels = this.options.users.get(user.userId).listTracked();
+      if (channels.some((channel) => !channel.backfillDone)) pending.push(user.userId);
     }
     return pending;
   }
 
-  private refreshChannels(userId: string, token: string): Promise<StoredChannel[]> {
-    return this.options.api.getChannels(token).then((channels) => {
-      const store = this.options.users.get(userId);
-      for (const channel of channels.filter(isDirectMessage)) {
-        const recipient = channel.recipients?.[0];
-        const current = store.getChannel(channel.id);
-        store.upsertChannel({
-          id: channel.id,
-          type: 1,
-          recipientId: recipient?.id ?? '',
-          recipientName: recipient?.global_name || recipient?.username || '알 수 없음',
-          lastMessageId: channel.last_message_id ?? null,
-          newestSyncedId: current?.newestSyncedId ?? null,
-          oldestSyncedId: current?.oldestSyncedId ?? null,
-          backfillDone: current?.backfillDone ?? false,
-          messageCount: current?.messageCount ?? 0,
-        });
-        if (channel.last_message_id) {
-          store.updateChannelCursor({ id: channel.id, lastMessageId: channel.last_message_id });
-        }
+  settleIdle(): void {
+    for (const user of this.options.registry.list()) {
+      if (user.status !== 'syncing') continue;
+      const pending =
+        this.options.users.hasFile(user.userId) &&
+        this.options.users.get(user.userId).listTracked().some((channel) => !channel.backfillDone);
+      if (pending) continue;
+      this.options.registry.setStatus(user.userId, 'ready');
+      this.options.registry.clearProgress(user.userId);
+    }
+  }
+
+  private finish(userId: string): void {
+    this.options.registry.setStatus(userId, 'ready');
+    this.options.registry.setLastSync(userId);
+    this.options.onSynced?.(userId);
+  }
+
+  private async refreshTracked(userId: string, token: string): Promise<void> {
+    const listed = await this.options.api.getChannels(token);
+    const store = this.options.users.get(userId);
+    for (const current of store.listTracked()) {
+      const remote = listed.find((channel) => channel.id === current.id && isDirectMessage(channel));
+      if (!remote) continue;
+      const recipient = remote.recipients?.[0];
+      store.upsertChannel({
+        ...current,
+        recipientId: recipient?.id ?? current.recipientId,
+        recipientName: recipient?.global_name || recipient?.username || current.recipientName,
+        lastMessageId: remote.last_message_id ?? current.lastMessageId,
+        tracked: true,
+      });
+      if (remote.last_message_id) {
+        store.updateChannelCursor({ id: current.id, lastMessageId: remote.last_message_id });
       }
-      return store.listChannels().filter((channel) => channel.type === 1);
-    });
+    }
   }
 
   private storePage(userId: string, channelId: string, page: ApiRawMessage[]): StoredMessage[] {
@@ -218,7 +286,7 @@ function compareId(a: string | null | undefined, b: string | null | undefined): 
 
 export async function resetFullSync(syncer: Syncer, users: UserDirectory, userId: string): Promise<void> {
   const store = users.get(userId);
-  for (const channel of store.listChannels()) {
+  for (const channel of store.listTracked()) {
     store.updateChannelCursor({ id: channel.id, oldestSyncedId: null, newestSyncedId: null, backfillDone: false });
     store.clearBackfillSeen(channel.id);
   }

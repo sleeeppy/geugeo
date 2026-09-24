@@ -38,6 +38,7 @@ export interface StoredChannel {
   oldestSyncedId: string | null;
   backfillDone: boolean;
   messageCount: number;
+  tracked: boolean;
 }
 
 interface MessageRow {
@@ -66,6 +67,7 @@ interface ChannelRow {
   oldest_synced_id: string | null;
   backfill_done: number;
   message_count: number;
+  tracked: number;
 }
 
 export class UserStore {
@@ -77,13 +79,30 @@ export class UserStore {
   }
 
   private migrate(): void {
-    this.db.exec(USER_SCHEMA_SQL);
-    const current = this.db.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get() as
-      | { value: string }
-      | undefined;
+    const hasMeta = this.db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'meta'`).get();
+    const current = hasMeta
+      ? (this.db.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get() as { value: string } | undefined)
+      : undefined;
     const version = current ? Number(current.value) : 0;
     if (version > SCHEMA_VERSION) {
       throw new Error('이 데이터 파일은 더 새 버전의 그거로 만들어졌어요.');
+    }
+    if (version === 1) {
+      this.db.exec(`
+        DROP TRIGGER IF EXISTS messages_ai;
+        DROP TRIGGER IF EXISTS messages_ad;
+        DROP TRIGGER IF EXISTS messages_au;
+        DELETE FROM messages;
+        DELETE FROM embeddings;
+        DELETE FROM backfill_seen;
+        DELETE FROM channels;
+        DROP TABLE IF EXISTS messages_fts;
+      `);
+    }
+    this.db.exec(USER_SCHEMA_SQL);
+    const columns = this.db.prepare(`PRAGMA table_info(channels)`).all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'tracked')) {
+      this.db.exec(`ALTER TABLE channels ADD COLUMN tracked INTEGER NOT NULL DEFAULT 0`);
     }
     this.db
       .prepare(
@@ -98,20 +117,22 @@ export class UserStore {
       .prepare(
         `INSERT INTO channels (
            id, type, recipient_id, recipient_name, last_message_id,
-           newest_synced_id, oldest_synced_id, backfill_done, message_count
+           newest_synced_id, oldest_synced_id, backfill_done, message_count, tracked
          ) VALUES (
            @id, @type, @recipientId, @recipientName, @lastMessageId,
-           @newestSyncedId, @oldestSyncedId, @backfillDone, @messageCount
+           @newestSyncedId, @oldestSyncedId, @backfillDone, @messageCount, @tracked
          )
          ON CONFLICT(id) DO UPDATE SET
            type = excluded.type,
            recipient_id = excluded.recipient_id,
            recipient_name = excluded.recipient_name,
-           last_message_id = excluded.last_message_id`,
+           last_message_id = excluded.last_message_id,
+           tracked = CASE WHEN excluded.tracked = 1 THEN 1 ELSE channels.tracked END`,
       )
       .run({
         ...channel,
         backfillDone: channel.backfillDone ? 1 : 0,
+        tracked: channel.tracked ? 1 : 0,
       });
   }
 
@@ -155,12 +176,16 @@ export class UserStore {
     return rows.map(mapChannel);
   }
 
+  listTracked(): StoredChannel[] {
+    return this.listChannels().filter((channel) => channel.tracked);
+  }
+
   searchRecipients(prefix: string, limit = 25): Array<{ id: string; name: string }> {
     const escaped = prefix.replace(/[\\%_]/g, (char) => `\\${char}`);
     const rows = this.db
       .prepare(
         `SELECT id, recipient_name AS name FROM channels
-         WHERE recipient_name LIKE ? ESCAPE '\\'
+         WHERE tracked = 1 AND recipient_name LIKE ? ESCAPE '\\'
          ORDER BY recipient_name
          LIMIT ?`,
       )
@@ -374,6 +399,7 @@ function mapChannel(row: ChannelRow): StoredChannel {
     oldestSyncedId: row.oldest_synced_id,
     backfillDone: row.backfill_done === 1,
     messageCount: row.message_count,
+    tracked: row.tracked === 1,
   };
 }
 

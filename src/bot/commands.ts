@@ -96,19 +96,20 @@ export function buildCommands(): SlashCommandBuilder[] {
       .setAutocomplete(true),
   );
 
-  const sync = base('sync', '동기화', 'Fetch new DM messages', '새 DM 메시지를 가져와요');
+  const sync = base('sync', '동기화', 'Fetch new messages from collected DMs', '수집해 둔 DM의 새 메시지를 가져와요');
   sync.addBooleanOption((option) =>
     option
       .setName('full')
       .setNameLocalizations({ ko: '전체' })
-      .setDescription('Rebuild the whole history')
-      .setDescriptionLocalizations({ ko: '과거 기록 전체를 다시 모아요' }),
+      .setDescription('Rebuild collected DM history')
+      .setDescriptionLocalizations({ ko: '수집해 둔 대화의 과거를 다시 모아요' }),
   );
 
   return [
     search,
     ai,
     base('link', '연동', 'Connect your Discord account', '계정 토큰을 연결해요'),
+    base('collect', '수집', 'Save this DM', '이 1:1 DM만 모아요'),
     base('unlink', '연동해제', 'Delete the token and saved DMs', '토큰과 모아 둔 대화를 삭제해요'),
     base('status', '상태', 'Show sync progress', '연동과 동기화 상태를 보여줘요'),
     sync,
