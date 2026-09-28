@@ -111,6 +111,20 @@ export class Syncer {
     return { name: targets[0]?.guildName ?? '서버', count: targets.length };
   }
 
+  async listGuildChoices(userId: string): Promise<Array<{ id: string; name: string }>> {
+    const token = this.readToken(userId);
+    if (!token || !this.options.api.getGuilds) return [];
+    try {
+      const guilds = await this.options.api.getGuilds(token);
+      return guilds
+        .map((guild) => ({ id: guild.id, name: guild.name?.trim() || '서버' }))
+        .sort((left, right) => left.name.localeCompare(right.name, 'ko'));
+    } catch (error) {
+      this.handleFailure(userId, error);
+      throw error;
+    }
+  }
+
   async beginCollectAll(userId: string, scope: CollectScope = 'dm'): Promise<number> {
     const token = this.readToken(userId);
     if (!token) return 0;

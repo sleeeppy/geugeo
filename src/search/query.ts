@@ -17,6 +17,7 @@ export interface SearchInput {
   raw: string;
   requesterId: string;
   channelId?: string;
+  guildId?: string;
   filters: SearchFilters;
   page: number;
   now?: number;
@@ -24,6 +25,8 @@ export interface SearchInput {
 
 export interface SearchHit extends StoredMessage {
   recipientName: string | null;
+  recipientId: string | null;
+  channelType: number | null;
 }
 
 export interface SearchResult {
@@ -56,6 +59,8 @@ interface HitRow {
   has_youtube: number;
   attachments: string | null;
   recipient_name: string | null;
+  recipient_id: string | null;
+  channel_type: number | null;
 }
 
 export function parseTerms(raw: string): string[] {
@@ -86,6 +91,9 @@ export function searchMessages(db: Database.Database, input: SearchInput): Searc
   if (input.channelId) {
     where.push('m.channel_id = ?');
     params.push(input.channelId);
+  } else if (input.guildId) {
+    where.push('c.recipient_id = ? AND c.type != 1');
+    params.push(input.guildId);
   }
   if (input.filters.author === 'me') {
     where.push('m.author_id = ?');
@@ -108,7 +116,7 @@ export function searchMessages(db: Database.Database, input: SearchInput): Searc
   const page = Math.max(0, input.page);
   const rows = db
     .prepare(
-      `SELECT m.*, c.recipient_name AS recipient_name ${from}
+      `SELECT m.*, c.recipient_name AS recipient_name, c.recipient_id AS recipient_id, c.type AS channel_type ${from}
        ORDER BY m.ts DESC
        LIMIT ? OFFSET ?`,
     )
@@ -159,5 +167,7 @@ function mapHit(row: HitRow): SearchHit {
     hasYoutube: row.has_youtube === 1,
     attachments: row.attachments ? (JSON.parse(row.attachments) as StoredMessage['attachments']) : [],
     recipientName: row.recipient_name,
+    recipientId: row.recipient_id,
+    channelType: row.channel_type,
   };
 }

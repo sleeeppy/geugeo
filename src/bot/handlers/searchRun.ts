@@ -17,10 +17,15 @@ export async function runAiSearch(ctx: AppContext, ownerId: string, query: strin
   try {
     const ranked = await ctx.semantic.search(ownerId, query, channelId);
     const messages = store.messagesByIds(ranked.map((hit) => hit.messageId));
-    const hits: SearchHit[] = messages.map((message) => ({
-      ...message,
-      recipientName: store.getChannel(message.channelId)?.recipientName ?? null,
-    }));
+    const hits: SearchHit[] = messages.map((message) => {
+      const channel = store.getChannel(message.channelId);
+      return {
+        ...message,
+        recipientName: channel?.recipientName ?? null,
+        recipientId: channel?.recipientId ?? null,
+        channelType: channel?.type ?? null,
+      };
+    });
     const sessionId = ctx.sessions.create({
       ownerId,
       query,
@@ -38,8 +43,9 @@ export async function runAiSearch(ctx: AppContext, ownerId: string, query: strin
       total: hits.length,
       page: 0,
       filters: { author: 'all', kind: 'all', period: 'all' },
-      scoped: Boolean(channelId),
-      recipientName: channelId ? store.getChannel(channelId)?.recipientName : undefined,
+      scopeLabel: channelId ? `${store.getChannel(channelId)?.recipientName ?? '대화'} · 이 대화` : '모아 둔 전체',
+      singleChannel: Boolean(channelId),
+      otherName: channelId ? (store.getChannel(channelId)?.recipientName ?? '상대') : '상대',
       mode: 'ai',
       syncingNote: user?.status === 'syncing' ? syncingLine() : undefined,
     });

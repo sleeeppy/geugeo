@@ -19,6 +19,8 @@ function hit(id: string, content: string): SearchHit {
     hasYoutube: content.includes('youtube'),
     attachments: [],
     recipientName: '민수',
+    recipientId: '200',
+    channelType: 1,
   };
 }
 
@@ -51,8 +53,9 @@ describe('search results UI', () => {
       total: 312,
       page: 0,
       filters,
-      scoped: true,
-      recipientName: '민수',
+      scopeLabel: '민수 · 이 대화',
+      singleChannel: true,
+      otherName: '민수',
       mode: 'keyword',
     });
     const stats = componentStats(view.components);
@@ -70,8 +73,9 @@ describe('search results UI', () => {
       total: 5,
       page: 0,
       filters,
-      scoped: true,
-      recipientName: '민수',
+      scopeLabel: '민수 · 이 대화',
+      singleChannel: true,
+      otherName: '민수',
       mode: 'keyword',
     });
     const stats = componentStats(view.components);

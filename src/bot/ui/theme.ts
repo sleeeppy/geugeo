@@ -13,7 +13,8 @@ export const COPY = {
   empty: (query: string) => `‘${query}’가 들어간 메시지가 없어요.`,
   emptyHint: '필터를 전체로 바꾸거나 기간을 늘려 보세요. 방금 보낸 메시지면 `/동기화`를 눌러 주세요.',
   channelMissing: '이 대화는 아직 안 모았어요. 그 사람과의 DM에서 `/수집`을 입력하세요.',
-  searchHereOnly: '이 명령은 지금 보고 있는 1:1 DM만 검색해요. 그 사람과의 대화창에서 `/그거`를 입력하거나, 모아 둔 전체를 보려면 `/그거뭐지`를 쓰세요.',
+  searchHereOnly: '이 명령은 지금 보고 있는 1:1 DM이나 서버에서 찾아요. 모아 둔 전체를 보려면 `/그거뭐지`를 쓰세요.',
+  guildNotCollected: '이 서버는 아직 안 모았어요. 이 서버 채널에서 `/수집`을 입력하세요.',
   tokenExpired: '토큰이 만료됐어요(비밀번호 변경 등). `/연동`으로 다시 연결해 주세요. 이미 모은 메시지는 계속 검색돼요.',
   internalError: '문제가 생겼어요. 잠시 후 다시 시도해 주세요.',
   sessionExpired: '검색이 만료됐어요. `/그거`를 다시 입력해 주세요.',
@@ -29,7 +30,9 @@ export const COPY = {
   collecting: (name: string) => `${name}와의 DM을 모으는 중이에요.`,
   collected: (name: string, count: number) => `${name}와의 DM을 모았어요. 메시지 ${count.toLocaleString('ko-KR')}개.`,
   collectAllAsk:
-    '지금 보고 있는 대화만 모으려면 `/수집`을 쓰세요.\n-# **DM 전체**는 1:1 대화를 모두 모아요.\n-# **모든 서버**는 그 DM과, 들어가 있는 서버의 글 채널을 같이 모아요.',
+    '지금 보고 있는 대화만 모으려면 `/수집`을 쓰세요.\n-# **DM 전체**는 1:1 대화를 모두 모아요.\n-# **서버 고르기**는 목록에서 고른 서버의 글 채널만 모아요.',
+  pickGuilds: '모을 서버를 고르세요. 고르지 않은 서버는 가져오지 않아요.',
+  noGuilds: '들어가 있는 서버가 없어요.',
   collectingAll: (scope: string, done: number, total: number, messages: number) =>
     `${scope} 범위를 모으는 중이에요.\n-# ${formatProgress(done, total, messages)}`,
   collectedAll: (scope: string, total: number, messages: number) =>

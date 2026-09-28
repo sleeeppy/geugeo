@@ -13,20 +13,28 @@ const DEFAULT_FILTERS: SessionFilters = { author: 'all', kind: 'all', period: 'a
 
 export async function handleSearch(interaction: ChatInputCommandInteraction, ctx: AppContext): Promise<void> {
   if (!(await allow(interaction, ctx))) return;
-  const channelId = currentDm(interaction);
+  if (interaction.guildId) {
+    await executeSearch(interaction, ctx, { guildId: interaction.guildId });
+    return;
+  }
+  const channelId = openDirectChannelId(interaction);
   if (!channelId) {
     await interaction.reply(renderNotice(COPY.searchHereOnly, COLOR.yellow));
     return;
   }
-  await executeSearch(interaction, ctx, channelId);
+  await executeSearch(interaction, ctx, { channelId });
 }
 
 export async function handleRecall(interaction: ChatInputCommandInteraction, ctx: AppContext): Promise<void> {
   if (!(await allow(interaction, ctx))) return;
-  await executeSearch(interaction, ctx, undefined);
+  await executeSearch(interaction, ctx, {});
 }
 
-async function executeSearch(interaction: ChatInputCommandInteraction, ctx: AppContext, scopedChannelId: string | undefined): Promise<void> {
+async function executeSearch(
+  interaction: ChatInputCommandInteraction,
+  ctx: AppContext,
+  scope: { channelId?: string; guildId?: string },
+): Promise<void> {
   await interaction.deferReply({ flags: 64 });
   try {
     const query = interaction.options.getString('query', true);
@@ -38,7 +46,8 @@ async function executeSearch(interaction: ChatInputCommandInteraction, ctx: AppC
     const rendered = await runSearch(ctx, {
       ownerId: interaction.user.id,
       query,
-      channelId: scopedChannelId,
+      channelId: scope.channelId,
+      guildId: scope.guildId,
       filters,
       mode: 'keyword',
       page: 0,
@@ -79,6 +88,13 @@ export async function handleSearchComponent(interaction: ButtonInteraction | Str
     session.filters.kind = choice(interaction.values[0], session.filters.kind);
     page = 0;
   }
+  if (interaction.isStringSelectMenu() && customId.startsWith('gg:filter:guild:')) {
+    const picked = interaction.values[0] ?? 'all';
+    session.channelId = undefined;
+    session.guildId = picked === 'all' ? undefined : picked;
+    session.recipientName = picked === 'all' ? undefined : guildName(ctx, session.ownerId, picked);
+    page = 0;
+  }
   ctx.sessions.update(sessionId, session);
   try {
     const rendered = await renderSession(ctx, session, sessionId, page);
@@ -97,6 +113,13 @@ async function runSearch(
   if (!user && !ctx.users.hasFile(input.ownerId)) return renderNotLinked();
   if (user?.status === 'token_invalid' && !ctx.users.hasFile(input.ownerId)) return tokenExpiredView();
   const storeReady = ctx.users.hasFile(input.ownerId);
+  let guildName: string | undefined;
+  if (input.guildId) {
+    if (!storeReady) return renderNotice(COPY.guildNotCollected, COLOR.yellow);
+    const channels = ctx.users.get(input.ownerId).listTracked().filter((channel) => channel.recipientId === input.guildId && channel.type !== 1);
+    if (channels.length === 0) return renderNotice(COPY.guildNotCollected, COLOR.yellow);
+    guildName = guildLabel(channels[0]?.recipientName);
+  }
   if (input.channelId && storeReady && !ctx.users.get(input.ownerId).getChannel(input.channelId)?.tracked) {
     return channelMissingView();
   }
@@ -104,11 +127,13 @@ async function runSearch(
   if (input.channelId && user?.tokenEnc) {
     await Promise.race([ctx.syncer.incrementalChannel(input.ownerId, input.channelId), sleep(2000)]);
   }
-  const recipientName = input.channelId && storeReady ? ctx.users.get(input.ownerId).getChannel(input.channelId)?.recipientName : undefined;
+  const recipientName =
+    guildName ?? (input.channelId && storeReady ? ctx.users.get(input.ownerId).getChannel(input.channelId)?.recipientName : undefined);
   const sessionId = ctx.sessions.create({
     ownerId: input.ownerId,
     query: input.query,
     channelId: input.channelId,
+    guildId: input.guildId,
     recipientName,
     filters: input.filters,
     mode: input.mode,
@@ -129,15 +154,21 @@ async function renderSession(ctx: AppContext, session: SearchSession, sessionId:
     const messages = store.messagesByIds(ranked.map((hit) => hit.messageId));
     const filtered = messages.filter((message) => matchesFilters(message, session, session.ownerId));
     total = filtered.length;
-    hits = filtered.slice(page * 5, page * 5 + 5).map((message) => ({
-      ...message,
-      recipientName: store.getChannel(message.channelId)?.recipientName ?? null,
-    }));
+    hits = filtered.slice(page * 5, page * 5 + 5).map((message) => {
+      const channel = store.getChannel(message.channelId);
+      return {
+        ...message,
+        recipientName: channel?.recipientName ?? null,
+        recipientId: channel?.recipientId ?? null,
+        channelType: channel?.type ?? null,
+      };
+    });
   } else {
     const result = searchMessages(store.db, {
       raw: session.query,
       requesterId: session.ownerId,
       channelId: session.channelId,
+      guildId: session.guildId,
       filters: session.filters,
       page,
     });
@@ -154,10 +185,13 @@ async function renderSession(ctx: AppContext, session: SearchSession, sessionId:
     total,
     page,
     filters: session.filters,
-    scoped: Boolean(session.channelId),
-    recipientName: session.recipientName,
+    scopeLabel: scopeLabel(session),
+    singleChannel: Boolean(session.channelId),
+    otherName: session.channelId ? (session.recipientName ?? '상대') : '상대',
     mode: session.mode,
     syncingNote: syncingNote(registryUser),
+    guildChoices: session.channelId ? undefined : collectedGuilds(ctx, session.ownerId),
+    selectedGuildId: session.guildId,
   });
 }
 
@@ -176,8 +210,32 @@ function syncingNote(user: RegistryUser | null): string | undefined {
   return syncingLine();
 }
 
-function currentDm(interaction: ChatInputCommandInteraction): string | null {
-  return openDirectChannelId(interaction);
+function scopeLabel(session: SearchSession): string {
+  if (session.channelId && session.recipientName) return `${session.recipientName} · 이 대화`;
+  if (session.guildId) return `${session.recipientName ?? '이 서버'} · 이 서버`;
+  return '모아 둔 전체';
+}
+
+function guildLabel(recipientName: string | undefined): string {
+  if (!recipientName) return '이 서버';
+  const split = recipientName.split(' · #');
+  return split[0] || recipientName;
+}
+
+function collectedGuilds(ctx: AppContext, userId: string): Array<{ id: string; name: string }> {
+  if (!ctx.users.hasFile(userId)) return [];
+  const names = new Map<string, string>();
+  for (const channel of ctx.users.get(userId).listTracked()) {
+    if (channel.type === 1 || names.has(channel.recipientId)) continue;
+    names.set(channel.recipientId, guildLabel(channel.recipientName));
+  }
+  return [...names.entries()]
+    .map(([id, name]) => ({ id, name }))
+    .sort((left, right) => left.name.localeCompare(right.name, 'ko'));
+}
+
+function guildName(ctx: AppContext, userId: string, guildId: string): string | undefined {
+  return collectedGuilds(ctx, userId).find((guild) => guild.id === guildId)?.name;
 }
 
 function choice<T extends string>(value: string | null, fallback: T): T {

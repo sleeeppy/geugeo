@@ -19,6 +19,11 @@ import { PAGE_SIZE, type SearchHit } from '../../search/query.js';
 import type { SessionFilters } from '../sessions.js';
 import { COLOR, COPY } from './theme.js';
 
+export interface GuildChoice {
+  id: string;
+  name: string;
+}
+
 export interface SearchViewInput {
   sessionId: string;
   query: string;
@@ -26,10 +31,13 @@ export interface SearchViewInput {
   total: number;
   page: number;
   filters: SessionFilters;
-  scoped: boolean;
-  recipientName?: string;
+  scopeLabel: string;
+  singleChannel: boolean;
+  otherName: string;
   mode: 'keyword' | 'ai';
   syncingNote?: string;
+  guildChoices?: GuildChoice[];
+  selectedGuildId?: string;
 }
 
 export interface Rendered {
@@ -98,7 +106,7 @@ function compose(input: SearchViewInput, budget: number): Rendered {
   const page = Math.min(input.page, pages - 1);
   const from = input.total === 0 ? 0 : page * PAGE_SIZE + 1;
   const to = Math.min(input.total, from + input.hits.length - 1);
-  const scope = input.scoped && input.recipientName ? `${escapeMarkdown(input.recipientName)} · 이 대화` : '모아 둔 DM 전체';
+  const scope = input.scopeLabel;
   const title = input.mode === 'ai' ? '### 그거 · 의미' : '### 그거';
   const header = [
     title,
@@ -115,7 +123,7 @@ function compose(input: SearchViewInput, budget: number): Rendered {
     if (index > 0) container.addSeparatorComponents(new SeparatorBuilder().setDivider(false).setSpacing(SeparatorSpacingSize.Small));
     const snippet = input.mode === 'ai' ? makeSnippet(hit, [], budget) : makeSnippet(hit, termsOf(input.query), budget);
     const when = `<t:${Math.floor(hit.ts / 1000)}:R>`;
-    const where = input.scoped ? '' : `-# ${escapeMarkdown(hit.recipientName ?? 'DM')}\n`;
+    const where = input.singleChannel ? '' : `-# ${escapeMarkdown(hit.recipientName ?? '대화')}\n`;
     const quoted = snippet
       .split('\n')
       .map((line) => `> ${line}`)
@@ -127,7 +135,7 @@ function compose(input: SearchViewInput, budget: number): Rendered {
         new ButtonBuilder()
           .setStyle(ButtonStyle.Link)
           .setLabel('열기')
-          .setURL(`https://discord.com/channels/@me/${hit.channelId}/${hit.id}`),
+          .setURL(messageUrl(hit)),
       );
     container.addSectionComponents(section);
   });
@@ -155,11 +163,33 @@ function compose(input: SearchViewInput, budget: number): Rendered {
     authorRow(input),
     kindRow(input),
   ];
+  if (input.guildChoices && input.guildChoices.length > 0) rows.push(guildRow(input));
   return payload([container.toJSON(), ...rows.map((row) => row.toJSON())]);
 }
 
+function guildRow(input: SearchViewInput): ActionRowBuilder<StringSelectMenuBuilder> {
+  const choices = input.guildChoices ?? [];
+  const selected = input.selectedGuildId;
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`gg:filter:guild:${input.sessionId}`)
+      .setPlaceholder('서버')
+      .addOptions(
+        option('전체', 'all', !selected),
+        ...choices.slice(0, 24).map((guild) => option(guild.name, guild.id, selected === guild.id)),
+      ),
+  );
+}
+
+function messageUrl(hit: SearchHit): string {
+  if (hit.channelType != null && hit.channelType !== 1 && hit.recipientId) {
+    return `https://discord.com/channels/${hit.recipientId}/${hit.channelId}/${hit.id}`;
+  }
+  return `https://discord.com/channels/@me/${hit.channelId}/${hit.id}`;
+}
+
 function authorRow(input: SearchViewInput): ActionRowBuilder<StringSelectMenuBuilder> {
-  const other = input.recipientName ?? '상대';
+  const other = input.otherName || '상대';
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(`gg:filter:author:${input.sessionId}`)
@@ -196,6 +226,25 @@ function buttonRow(customId: string, label: string, style = ButtonStyle.Primary)
   return new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(customId).setLabel(label).setStyle(style));
 }
 
+export function renderGuildPicker(guilds: GuildChoice[]): Rendered {
+  const shown = guilds.slice(0, 25);
+  const extra = guilds.length > shown.length ? `\n-# 서버가 많아 이름순 ${shown.length}개만 보여요.` : '';
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR.blurple)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### 전체수집\n${COPY.pickGuilds}${extra}`))
+    .addActionRowComponents(
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('gg:collect-guilds')
+          .setPlaceholder('모을 서버')
+          .setMinValues(1)
+          .setMaxValues(Math.max(1, shown.length))
+          .addOptions(shown.map((guild) => option(guild.name, guild.id, false))),
+      ),
+    );
+  return payload([container.toJSON()]);
+}
+
 export function renderCollectAllChoice(): Rendered {
   const container = new ContainerBuilder()
     .setAccentColor(COLOR.blurple)
@@ -203,7 +252,7 @@ export function renderCollectAllChoice(): Rendered {
     .addActionRowComponents(
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId('gg:collect-all:dm').setLabel('DM 전체').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('gg:collect-all:server').setLabel('모든 서버').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('gg:collect-all:server').setLabel('서버 고르기').setStyle(ButtonStyle.Secondary),
       ),
     );
   return payload([container.toJSON()]);

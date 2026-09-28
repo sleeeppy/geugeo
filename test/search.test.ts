@@ -156,4 +156,22 @@ describe('search', () => {
     expect(searchMessages(store.db, { raw: '밤편지', requesterId: '1', filters, page: 0 }).hits[0]?.id).toBe('1');
     expect(searchMessages(store.db, { raw: '예산안', requesterId: '1', filters, page: 0 }).hits[0]?.id).toBe('3');
   });
+
+  it('limits a search to one server', () => {
+    const fx = fixtureStore();
+    opened.push(fx);
+    const store = fx.users.get('100000000000000009');
+    store.upsertChannel(channel({ id: '10', type: 1, recipientId: '200', recipientName: '민수' }));
+    store.upsertChannel(channel({ id: '20', type: 0, recipientId: '901', recipientName: '우리서버 · #일반' }));
+    store.upsertChannel(channel({ id: '30', type: 0, recipientId: '902', recipientName: '다른서버 · #잡담' }));
+    store.upsertMessages([
+      message({ id: '1', channelId: '10', content: '회의', searchText: '회의' }),
+      message({ id: '2', channelId: '20', content: '회의 안건', searchText: '회의 안건' }),
+      message({ id: '3', channelId: '30', content: '회의 다른서버', searchText: '회의 다른서버' }),
+    ]);
+    const result = searchMessages(store.db, { raw: '회의', requesterId: '100000000000000009', guildId: '901', filters, page: 0 });
+    expect(result.hits.map((hit) => hit.id)).toEqual(['2']);
+    expect(result.hits[0]?.channelType).toBe(0);
+    expect(result.hits[0]?.recipientId).toBe('901');
+  });
 });

@@ -13,6 +13,7 @@ export interface SearchSession {
   ownerId: string;
   query: string;
   channelId?: string;
+  guildId?: string;
   recipientName?: string;
   filters: SessionFilters;
   mode: 'keyword' | 'ai';

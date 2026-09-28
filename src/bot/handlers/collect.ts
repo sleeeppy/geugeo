@@ -1,8 +1,8 @@
-import { InteractionContextType, type ButtonInteraction, type ChatInputCommandInteraction } from 'discord.js';
+import { InteractionContextType, type ButtonInteraction, type ChatInputCommandInteraction, type StringSelectMenuInteraction } from 'discord.js';
 import { TokenInvalidError } from '../../discord/userApi.js';
 import { isAllowed } from '../guard.js';
 import type { AppContext } from '../context.js';
-import { renderCollectAllChoice, renderNotice } from '../ui/results.js';
+import { renderCollectAllChoice, renderGuildPicker, renderNotice } from '../ui/results.js';
 import { deniedView, errorView, tokenExpiredView } from '../ui/states.js';
 import { personRows } from '../personProgress.js';
 import { COLOR, COPY, formatPersonProgress, renderPersonList } from '../ui/theme.js';
@@ -142,7 +142,27 @@ export async function handleCollectAllButton(interaction: ButtonInteraction, ctx
     return;
   }
   const scope: CollectScope = interaction.customId.endsWith(':server') ? 'server' : 'dm';
-  const scopeLabel = scope === 'server' ? '모든 DM과 서버' : '모든 DM';
+  if (scope === 'server') {
+    await interaction.deferUpdate();
+    try {
+      const guilds = await ctx.syncer.listGuildChoices(interaction.user.id);
+      if (guilds.length === 0) {
+        ctx.registry.setStatus(interaction.user.id, 'ready');
+        await interaction.editReply(renderNotice(`### 전체수집\n${COPY.noGuilds}`, COLOR.yellow));
+        return;
+      }
+      await interaction.editReply(renderGuildPicker(guilds));
+    } catch (error) {
+      if (error instanceof TokenInvalidError) {
+        await interaction.editReply(renderNotice('토큰이 거부됐어요. `/연동`으로 다시 넣어 주세요.', COLOR.red));
+        return;
+      }
+      ctx.log.error('서버 목록을 가져오지 못했어요.', { error });
+      await interaction.editReply(errorView());
+    }
+    return;
+  }
+  const scopeLabel = '모든 DM';
   await interaction.deferUpdate();
   await interaction.editReply(renderNotice(`### 전체수집\n${scopeLabel} 목록을 확인하는 중이에요.`, COLOR.blurple));
   try {
@@ -186,6 +206,73 @@ export async function handleCollectAllButton(interaction: ButtonInteraction, ctx
       return;
     }
     ctx.log.error('전체 수집을 시작하지 못했어요.', { error });
+    await interaction.editReply(errorView());
+  }
+}
+
+export async function handleCollectGuilds(interaction: StringSelectMenuInteraction, ctx: AppContext): Promise<void> {
+  if (!isAllowed(ctx.config, interaction.user.id)) {
+    await interaction.reply(deniedView());
+    return;
+  }
+  const userId = interaction.user.id;
+  const user = ctx.registry.get(userId);
+  if (!user?.tokenEnc) {
+    await interaction.reply(user ? tokenExpiredView() : renderNotice(COPY.notLinkedYet));
+    return;
+  }
+  const guildIds = interaction.values.filter((id) => /^\d{5,22}$/.test(id));
+  if (guildIds.length === 0) {
+    await interaction.reply(renderNotice('서버를 하나 이상 고르세요.', COLOR.yellow));
+    return;
+  }
+  await interaction.deferUpdate();
+  try {
+    const names: string[] = [];
+    for (const guildId of guildIds) {
+      const guild = await ctx.syncer.beginCollectGuild(userId, guildId);
+      if (!guild) continue;
+      ctx.queue.enqueue(`collect:${userId}:guild:${guildId}`, () => ctx.syncer.collectGuild(userId, guildId));
+      names.push(guild.name);
+    }
+    if (names.length === 0) {
+      await interaction.editReply(renderNotice(`### 전체수집\n${COPY.noGuildChannels}`, COLOR.yellow));
+      return;
+    }
+    const title = names.join(', ');
+    await interaction.editReply(renderNotice(`### 전체수집\n${title} 서버를 모으는 중이에요.`, COLOR.green));
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (Date.now() - started > 14 * 60 * 1000) {
+        clearInterval(timer);
+        return;
+      }
+      const current = ctx.registry.get(userId);
+      const rows = personRows(ctx, userId, guildIds);
+      const messages = rows.reduce((sum, row) => sum + row.count, 0);
+      const guildDone = rows.length > 0 && rows.every((row) => row.state === 'done');
+      const stopped = !current || current.status === 'paused' || current.status === 'error' || current.status === 'token_invalid';
+      if (guildDone || stopped) clearInterval(timer);
+      const line =
+        current?.status === 'paused'
+          ? COPY.stopped
+          : guildDone
+            ? `${title} 서버를 모았어요. 메시지 ${messages.toLocaleString('ko-KR')}개.\n${renderPersonList(rows)}`
+            : `${title} 서버를 모으는 중이에요.\n${renderPersonList(rows)}`;
+      const accent = current?.status === 'error' || current?.status === 'token_invalid' ? COLOR.red : COLOR.green;
+      void interaction.editReply(renderNotice(`### 전체수집\n${line}`, accent)).catch(() => clearInterval(timer));
+    }, 3_000);
+    timer.unref?.();
+  } catch (error) {
+    if (error instanceof SyncStopped) {
+      await interaction.editReply(renderNotice(`### 전체수집\n${COPY.stopped}`, COLOR.green));
+      return;
+    }
+    if (error instanceof TokenInvalidError) {
+      await interaction.editReply(renderNotice('토큰이 거부됐어요. `/연동`으로 다시 넣어 주세요.', COLOR.red));
+      return;
+    }
+    ctx.log.error('고른 서버 수집을 시작하지 못했어요.', { error });
     await interaction.editReply(errorView());
   }
 }
