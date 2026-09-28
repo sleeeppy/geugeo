@@ -1,0 +1,46 @@
+name: 배포
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: 빌드 도구
+        run: sudo apt-get update && sudo apt-get install -y build-essential python3
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+
+  deploy:
+    needs: test
+    if: github.repository == 'sleeeppy/geugeo'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: SSH로 서버 갱신
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          if [[ -z "$SSH_PRIVATE_KEY" || -z "$SSH_HOST" || -z "$SSH_USER" ]]; then
+            echo "SSH_PRIVATE_KEY, SSH_HOST, SSH_USER 시크릿이 없어요."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$SSH_USER@$SSH_HOST" "sudo bash -c 'set -euo pipefail; cd /opt/geugeo; git config --global --get-all safe.directory | grep -qx /opt/geugeo || git config --global --add safe.directory /opt/geugeo; git fetch origin main; git checkout -f main; git reset --hard origin/main; bash deploy/update.sh'"

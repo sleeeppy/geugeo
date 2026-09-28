@@ -63,11 +63,17 @@ sudo bash /opt/geugeo/deploy/setup-oracle.sh
 
 처음 실행하면 `/etc/geugeo/geugeo.env`가 생깁니다. 봇 토큰, 앱 ID, 허용 ID를 채운 뒤 스크립트를 한 번 더 실행하세요. `/etc/geugeo/master-key`는 그때 한 번만 만들어집니다. **비밀번호 관리자에 복사해 두세요. 이 키를 잃으면 저장된 대화는 복구할 수 없습니다.**
 
-업데이트:
+업데이트는 `main`에 푸시하면 GitHub Actions가 테스트 뒤에 SSH로 이 서버를 갱신합니다. 웹 포트는 열지 않습니다. 봇 토큰은 Actions에 없고, 서버의 `/etc/geugeo/geugeo.env`만 읽습니다.
+
+처음 한 번만, 배포용 공개 키를 서버 `ubuntu` 계정에 넣으세요. 개인 키는 저장소에 없고 GitHub 시크릿 `SSH_PRIVATE_KEY`에만 있습니다. `SSH_HOST`는 서버 공인 IP, `SSH_USER`는 `ubuntu`입니다.
 
 ```bash
-cd /opt/geugeo && git pull && sudo bash deploy/setup-oracle.sh
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMsDtdvsTWMgkGCEgG7hKu5kxyYoQXLmXyEzZS1ZlGjI geugeo-deploy' >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
 ```
+
+그 다음 GitHub에서 실패한 배포를 다시 실행하거나 `main`에 한 번 더 푸시하면 됩니다. 서버에서 직접 갱신할 때는 `sudo bash /opt/geugeo/deploy/update.sh` 입니다.
 
 로그는 `journalctl -u geugeo -f` 입니다.
 
