@@ -21,6 +21,7 @@ export async function handleCollect(interaction: ChatInputCommandInteraction, ct
   }
   const channelId = openDirectChannelId(interaction);
   if (!channelId) {
+    if (interaction.guildId) return handleCollectGuild(interaction, ctx, interaction.guildId);
     const botDm = interaction.context === InteractionContextType.BotDM;
     await interaction.reply(renderNotice(botDm ? COPY.notBotDm : COPY.notDm, COLOR.yellow));
     return;
@@ -66,6 +67,49 @@ export async function handleCollect(interaction: ChatInputCommandInteraction, ct
       return;
     }
     ctx.log.error('수집을 시작하지 못했어요.', { error });
+    await interaction.editReply(errorView());
+  }
+}
+
+async function handleCollectGuild(interaction: ChatInputCommandInteraction, ctx: AppContext, guildId: string): Promise<void> {
+  await interaction.deferReply({ flags: 64 });
+  const userId = interaction.user.id;
+  try {
+    const guild = await ctx.syncer.beginCollectGuild(userId, guildId);
+    if (!guild) {
+      await interaction.editReply(renderNotice(`### 수집\n${COPY.noGuildChannels}`, COLOR.yellow));
+      return;
+    }
+    ctx.queue.enqueue(`collect:${userId}:guild:${guildId}`, () => ctx.syncer.collectGuild(userId, guildId));
+    await interaction.editReply(renderNotice(`### 수집\n${COPY.collectingGuild(guild.name)}`, COLOR.green));
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (Date.now() - started > 14 * 60 * 1000) {
+        clearInterval(timer);
+        return;
+      }
+      const current = ctx.registry.get(userId);
+      const rows = personRows(ctx, userId, guildId);
+      const messages = rows.reduce((sum, row) => sum + row.count, 0);
+      const guildDone = rows.length > 0 && rows.every((row) => row.state === 'done');
+      const stopped = !current || current.status === 'paused' || current.status === 'error' || current.status === 'token_invalid';
+      if (guildDone || stopped) clearInterval(timer);
+      const line =
+        current?.status === 'paused'
+          ? COPY.stopped
+          : guildDone
+            ? `${COPY.collectedGuild(guild.name, rows.length, messages)}\n${renderPersonList(rows)}`
+            : `${COPY.collectingGuild(guild.name)}\n${renderPersonList(rows)}`;
+      const accent = current?.status === 'error' || current?.status === 'token_invalid' ? COLOR.red : COLOR.green;
+      void interaction.editReply(renderNotice(`### 수집\n${line}`, accent)).catch(() => clearInterval(timer));
+    }, 3_000);
+    timer.unref?.();
+  } catch (error) {
+    if (error instanceof TokenInvalidError) {
+      await interaction.editReply(renderNotice('토큰이 거부됐어요. `/연동`으로 다시 넣어 주세요.', COLOR.red));
+      return;
+    }
+    ctx.log.error('서버 수집을 시작하지 못했어요.', { error });
     await interaction.editReply(errorView());
   }
 }

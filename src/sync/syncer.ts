@@ -75,6 +75,42 @@ export class Syncer {
     return name;
   }
 
+  async beginCollectGuild(userId: string, guildId: string): Promise<{ name: string; count: number } | null> {
+    const token = this.readToken(userId);
+    if (!token) return null;
+    let targets;
+    try {
+      targets = await this.listGuildTargets(userId, token, guildId);
+    } catch (error) {
+      this.handleFailure(userId, error);
+      throw error;
+    }
+    if (targets.length === 0) return null;
+    const store = this.options.users.get(userId);
+    for (const target of targets) {
+      const current = store.getChannel(target.id);
+      store.upsertChannel({
+        id: target.id,
+        type: target.type,
+        recipientId: target.recipientId,
+        recipientName: target.recipientName,
+        lastMessageId: target.lastMessageId,
+        newestSyncedId: current?.newestSyncedId ?? null,
+        oldestSyncedId: current?.oldestSyncedId ?? null,
+        backfillDone: current?.backfillDone ?? false,
+        messageCount: current?.messageCount ?? 0,
+        tracked: true,
+      });
+    }
+    this.options.registry.setStatus(userId, 'syncing');
+    this.options.registry.setProgress(userId, {
+      channelsDone: 0,
+      channelsTotal: targets.length,
+      messages: store.countMessages(),
+    });
+    return { name: targets[0]?.guildName ?? '서버', count: targets.length };
+  }
+
   async beginCollectAll(userId: string, scope: CollectScope = 'dm'): Promise<number> {
     const token = this.readToken(userId);
     if (!token) return 0;
@@ -170,6 +206,33 @@ export class Syncer {
       if (current?.backfillDone) await this.incrementalChannel(userId, channelId);
       this.haltIfStopped(userId);
       this.options.registry.setProgress(userId, { channelsDone: 1, channelsTotal: 1, messages: store.countMessages(channelId) });
+      this.finish(userId);
+    } catch (error) {
+      this.handleFailure(userId, error);
+    }
+  }
+
+  async collectGuild(userId: string, guildId: string): Promise<void> {
+    const token = this.readToken(userId);
+    if (!token) return;
+    const store = this.options.users.get(userId);
+    try {
+      this.haltIfStopped(userId);
+      this.options.registry.setStatus(userId, 'syncing');
+      const ordered = store
+        .listTracked()
+        .filter((channel) => channel.recipientId === guildId)
+        .sort((a, b) => compareId(b.lastMessageId, a.lastMessageId));
+      for (const channel of ordered) {
+        this.haltIfStopped(userId);
+        const fresh = store.getChannel(channel.id) ?? channel;
+        if (!fresh.backfillDone) {
+          await this.backfillChannel(userId, token, fresh.id);
+        } else if (fresh.lastMessageId && fresh.lastMessageId !== fresh.newestSyncedId) {
+          await this.incrementalChannel(userId, fresh.id);
+        }
+      }
+      this.haltIfStopped(userId);
       this.finish(userId);
     } catch (error) {
       this.handleFailure(userId, error);
@@ -340,7 +403,8 @@ export class Syncer {
   private async listGuildTargets(
     userId: string,
     token: string,
-  ): Promise<Array<{ id: string; type: number; recipientId: string; recipientName: string; lastMessageId: string | null }>> {
+    onlyGuildId?: string,
+  ): Promise<Array<{ id: string; type: number; recipientId: string; recipientName: string; guildName: string; lastMessageId: string | null }>> {
     const api = this.options.api;
     if (!api.getGuilds || !api.getGuildChannels) return [];
     let guilds;
@@ -352,6 +416,7 @@ export class Syncer {
     }
     const targets = [];
     for (const guild of guilds) {
+      if (onlyGuildId && guild.id !== onlyGuildId) continue;
       this.haltIfStopped(userId);
       let channels;
       try {
@@ -368,6 +433,7 @@ export class Syncer {
           type: channel.type,
           recipientId: guild.id,
           recipientName: `${guild.name} · #${channelName}`,
+          guildName: guild.name,
           lastMessageId: channel.last_message_id ?? null,
         });
       }

@@ -290,4 +290,52 @@ describe('syncer', () => {
     expect(store.getChannel('20')?.recipientName).toBe('우리서버 · #일반');
     expect(store.countMessages()).toBe(3);
   });
+
+  it('collects every text channel of the current server and leaves other servers alone', async () => {
+    const fx = fixtureStore();
+    opened.push(fx);
+    const userId = '100000000000000028';
+    fx.registry.upsert({
+      userId,
+      username: 'me',
+      tokenEnc: encryptSecret(tokenKey(fx.master), 'tok', userId),
+      status: 'ready',
+    });
+    const api = {
+      async getChannels() {
+        return [{ id: '10', type: 1, last_message_id: '2', recipients: [{ id: '2', username: 'minsu', global_name: '민수' }] }];
+      },
+      async getGuilds() {
+        return [
+          { id: '901', name: '우리서버' },
+          { id: '902', name: '다른서버' },
+        ];
+      },
+      async getGuildChannels(_token: string, guildId: string) {
+        if (guildId === '901') {
+          return [
+            { id: '20', type: 0, name: '일반', last_message_id: '7' },
+            { id: '21', type: 4, name: '카테고리' },
+            { id: '22', type: 5, name: '공지', last_message_id: '9' },
+          ];
+        }
+        return [{ id: '30', type: 0, name: '잡담', last_message_id: '11' }];
+      },
+      async getMessages(_token: string, channelId: string, query: { before?: string }) {
+        if (query.before) return [];
+        if (channelId === '20') return [msg('7')];
+        if (channelId === '22') return [msg('9'), msg('8')];
+        return [msg('11')];
+      },
+    };
+    const syncer = new Syncer({ registry: fx.registry, users: fx.users, api, masterKey: fx.master, log: createLogger('error') });
+    expect(await syncer.beginCollectGuild(userId, '901')).toEqual({ name: '우리서버', count: 2 });
+    await syncer.collectGuild(userId, '901');
+    const store = fx.users.get(userId);
+    expect(store.listChannels().map((channel) => channel.id).sort()).toEqual(['20', '22']);
+    expect(store.getChannel('20')?.recipientName).toBe('우리서버 · #일반');
+    expect(store.getChannel('22')?.recipientId).toBe('901');
+    expect(store.countMessages()).toBe(3);
+    expect(fx.registry.get(userId)?.status).toBe('ready');
+  });
 });

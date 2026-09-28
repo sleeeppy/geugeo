@@ -20,7 +20,11 @@ export const COPY = {
   aiOff: 'AI 검색은 지금은 꺼져 있어요.',
   aiFoot: '정확하지 않을 수 있어요. 정확한 단어를 알면 /그거가 더 확실해요.',
   linked: '연결됐어요. 메시지를 모으려면 그 사람과의 DM을 열고 `/수집`을 입력하세요.',
-  notDm: '지금 열린 창이 1:1 DM이 아니에요. 그 사람과의 대화창에서 `/수집`을 입력하세요.',
+  notDm: '지금 열린 창이 1:1 DM도, 서버도 아니에요. 그 사람과의 DM이나 서버 채널에서 `/수집`을 입력하세요.',
+  noGuildChannels: '이 서버에서 모을 글 채널이 없어요.',
+  collectingGuild: (name: string) => `${name} 서버의 글 채널을 모으는 중이에요.`,
+  collectedGuild: (name: string, channels: number, count: number) =>
+    `${name} 서버의 글 채널 ${channels.toLocaleString('ko-KR')}개를 모았어요. 메시지 ${count.toLocaleString('ko-KR')}개.`,
   notBotDm: '봇과의 대화는 수집하지 않아요. 그 사람과의 DM에서 `/수집`을 입력하세요.',
   collecting: (name: string) => `${name}와의 DM을 모으는 중이에요.`,
   collected: (name: string, count: number) => `${name}와의 DM을 모았어요. 메시지 ${count.toLocaleString('ko-KR')}개.`,
