@@ -142,7 +142,7 @@ export async function handleCollectAllButton(interaction: ButtonInteraction, ctx
     return;
   }
   const scope: CollectScope = interaction.customId.endsWith(':server') ? 'server' : 'dm';
-  const scopeLabel = scope === 'server' ? 'DM과 서버' : 'DM';
+  const scopeLabel = scope === 'server' ? '모든 DM과 서버' : '모든 DM';
   await interaction.deferUpdate();
   await interaction.editReply(renderNotice(`### 전체수집\n${scopeLabel} 목록을 확인하는 중이에요.`, COLOR.blurple));
   try {

@@ -29,7 +29,7 @@ export const COPY = {
   collecting: (name: string) => `${name}와의 DM을 모으는 중이에요.`,
   collected: (name: string, count: number) => `${name}와의 DM을 모았어요. 메시지 ${count.toLocaleString('ko-KR')}개.`,
   collectAllAsk:
-    '범위를 고르면 그때 모으기 시작해요.\n-# **DM만**은 1:1 대화만, **서버까지**는 그 DM과 읽을 수 있는 서버 글 채널을 같이 모아요.',
+    '지금 보고 있는 대화만 모으려면 `/수집`을 쓰세요.\n-# **DM 전체**는 1:1 대화를 모두 모아요.\n-# **모든 서버**는 그 DM과, 들어가 있는 서버의 글 채널을 같이 모아요.',
   collectingAll: (scope: string, done: number, total: number, messages: number) =>
     `${scope} 범위를 모으는 중이에요.\n-# ${formatProgress(done, total, messages)}`,
   collectedAll: (scope: string, total: number, messages: number) =>

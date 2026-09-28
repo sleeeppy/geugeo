@@ -202,8 +202,8 @@ export function renderCollectAllChoice(): Rendered {
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### 전체수집\n${COPY.collectAllAsk}`))
     .addActionRowComponents(
       new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId('gg:collect-all:dm').setLabel('DM만').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('gg:collect-all:server').setLabel('서버까지').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('gg:collect-all:dm').setLabel('DM 전체').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('gg:collect-all:server').setLabel('모든 서버').setStyle(ButtonStyle.Secondary),
       ),
     );
   return payload([container.toJSON()]);

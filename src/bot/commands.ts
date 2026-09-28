@@ -72,7 +72,7 @@ export function buildCommands(): SlashCommandBuilder[] {
     ai,
     base('link', '연동', 'Connect your Discord account', '계정 토큰을 연결해요'),
     base('collect', '수집', 'Save this DM or this server', '지금 열린 1:1 DM, 또는 이 서버의 글 채널을 모아요'),
-    base('collect-all', '전체수집', 'Save every 1:1 DM', '1:1 DM 전체를 모아요'),
+    base('collect-all', '전체수집', 'Save every DM, or every server too', '모든 1:1 DM을 모아요. 들어간 서버 글까지 고를 수 있어요.'),
     base('stop', '중지', 'Stop collecting messages', '진행 중인 수집을 멈춰요'),
     base('reset', '초기화', 'Delete saved DM messages', '모아 둔 DM 메시지를 전부 삭제해요'),
     base('unlink', '연동해제', 'Delete the token and saved DMs', '토큰과 모아 둔 대화를 삭제해요'),
